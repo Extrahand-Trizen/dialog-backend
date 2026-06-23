@@ -5,6 +5,7 @@ import type { NotificationTriggerJobData } from '../../modules/notifications/not
 import type { OutboundWebhookJobData } from '../../modules/outboundWebhooks/outboundWebhooks.schemas';
 import type { TemplateSyncJobData } from '../../modules/templates/templates.schemas';
 import { getQueueConnection, isQueueInfrastructureConfigured } from './connection';
+import { buildJobId } from './jobId';
 import { DEFAULT_JOB_OPTIONS, MESSAGE_SEND_JOB_OPTIONS, QUEUE_NAMES } from './registry';
 
 export type WebhookIngestJobData = {
@@ -66,7 +67,7 @@ export async function enqueueTemplateSync(data: TemplateSyncJobData): Promise<vo
 
   await queue.add('template-sync', data, {
     ...DEFAULT_JOB_OPTIONS,
-    jobId: `template-sync:${data.whatsAppAccountId}`,
+    jobId: buildJobId('template-sync', data.whatsAppAccountId),
   });
 }
 
@@ -152,7 +153,7 @@ export async function enqueueOutboundWebhook(data: OutboundWebhookJobData): Prom
 
   await queue.add('outbound-webhook', data, {
     ...DEFAULT_JOB_OPTIONS,
-    jobId: `${data.messageId}:${data.event}`,
+    jobId: buildJobId(data.messageId, data.event),
   });
 }
 
