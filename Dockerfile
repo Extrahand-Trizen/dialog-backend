@@ -29,9 +29,7 @@ RUN npm run build && npm prune --omit=dev
 
 FROM base AS production
 
-ENV NODE_ENV=production
-ENV PORT=4010
-ENV LOG_LEVEL=info
+# All config is supplied at runtime via CapRover env vars (no baked defaults).
 
 COPY --from=build --chown=nodeuser:nodejs /app/node_modules ./node_modules
 COPY --from=build --chown=nodeuser:nodejs /app/dist ./dist

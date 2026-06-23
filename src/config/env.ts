@@ -28,6 +28,9 @@ const envSchema = z.object({
 
   CORS_ORIGIN: z.string().optional(),
 
+  /** Public URL of the TrizenDialog console — optional alias; merged into CORS allowlist when set. */
+  FRONTEND_URL: z.string().url().optional(),
+
   META_API_VERSION: z.string().default('v23.0'),
   META_APP_ID: z.string().min(1).optional(),
   META_WEBHOOK_VERIFY_TOKEN: z.string().optional(),
@@ -53,6 +56,19 @@ const envSchema = z.object({
         code: 'custom',
         message: 'POSTGRES_URI_DEV is required when USE_DEV_DATABASE=true',
         path: ['POSTGRES_URI_DEV'],
+      });
+    }
+  })
+  .superRefine((data, ctx) => {
+    const hasCors =
+      Boolean(data.CORS_ORIGIN?.trim()) || Boolean(data.FRONTEND_URL?.trim());
+
+    if (data.NODE_ENV === 'production' && !hasCors) {
+      ctx.addIssue({
+        code: 'custom',
+        message:
+          'CORS_ORIGIN or FRONTEND_URL is required in production (frontend origin for browser API access)',
+        path: ['CORS_ORIGIN'],
       });
     }
   });
@@ -94,13 +110,6 @@ export function getPostgresConnectionTarget(env: Env = validateEnv()): PostgresC
 
 export function isPostgresDevDatabaseEnabled(env: Env = validateEnv()): boolean {
   return env.USE_DEV_DATABASE;
-}
-
-export function getCorsOrigin(env: Env): string | string[] | boolean | undefined {
-  if (!env.CORS_ORIGIN) {
-    return env.NODE_ENV === 'production' ? undefined : true;
-  }
-  return env.CORS_ORIGIN.split(',').map((origin) => origin.trim());
 }
 
 export function resetEnvCacheForTests(): void {

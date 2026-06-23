@@ -3,7 +3,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
 import morgan from 'morgan';
-import { getCorsOrigin, validateEnv } from './config/env';
+import { createCorsOptions } from './config/cors';
+import { validateEnv } from './config/env';
 import { errorHandler } from './middleware/errorHandler';
 import { requestLogger } from './middleware/requestLogger';
 import { createV1Router } from './api/v1';
@@ -15,7 +16,7 @@ export function createApp(): Application {
   const app = express();
 
   app.use(helmet());
-  app.use(cors({ origin: getCorsOrigin(env), credentials: true }));
+  app.use(cors(createCorsOptions(env)));
   app.use(requestLogger);
 
   // Meta webhooks require the raw body for HMAC signature verification.

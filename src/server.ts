@@ -1,4 +1,5 @@
 import { createApp } from './app';
+import { getCorsOrigins } from './config/cors';
 import { getPostgresConnectionTarget, getPostgresUri, validateEnv } from './config/env';
 import logger from './infrastructure/logging/logger';
 import { connectPrisma, disconnectPrisma } from './infrastructure/prisma/client';
@@ -11,6 +12,7 @@ async function startServer(): Promise<void> {
   logger.info('Starting TrizenDialog backend', {
     nodeEnv: env.NODE_ENV,
     postgresTarget: getPostgresConnectionTarget(),
+    corsOrigins: getCorsOrigins(),
   });
 
   registerTemplateEventHandlers();

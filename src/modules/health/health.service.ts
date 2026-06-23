@@ -3,6 +3,7 @@ import {
   isPostgresDevDatabaseEnabled,
   validateEnv,
 } from '../../config/env';
+import { getCorsOrigins, isCorsConfigured } from '../../config/cors';
 import {
   isPrismaConfigured,
   pingPrisma,
@@ -48,16 +49,18 @@ export async function getReadiness(): Promise<ReadinessCheckDto> {
   };
 }
 
-export function getConfigSummary(): Record<string, boolean | string> {
+export function getConfigSummary(): Record<string, boolean | string | number> {
+  const corsOrigins = getCorsOrigins();
   return {
     postgresConfigured: isPrismaConfigured(),
     postgresTarget: getPostgresConnectionTarget(),
     postgresDevDatabaseEnabled: isPostgresDevDatabaseEnabled(),
+    corsConfigured: isCorsConfigured(),
+    corsOriginCount: corsOrigins.length,
     redisConfigured: isRedisConfigured(),
     encryptionConfigured: isEncryptionConfigured(),
   };
 }
-
 async function checkPostgres(): Promise<DependencyStatus> {
   if (!isPrismaConfigured()) {
     return 'not_configured';
