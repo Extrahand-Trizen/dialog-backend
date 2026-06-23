@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 2,
+  "dockerfilePath": "./Dockerfile",
+  "buildArguments": {
+    "CACHE_BUST": "latest"
+  },
+  "expose": {
+    "api": {
+      "containerPort": 4010,
+      "httpPort": 80,
+      "httpsPort": 443
+    }
+  },
+  "healthcheck": {
+    "path": "/api/v1/health",
+    "port": 4010,
+    "interval": 30,
+    "timeout": 10,
+    "retries": 3,
+    "startPeriod": 40
+  },
+  "appName": "trizendialog-backend",
+  "hasPersistentData": false,
+  "description": "TrizenDialog — WhatsApp notification platform API",
+  "instanceCount": 1,
+  "tags": ["nodejs", "typescript", "express", "prisma", "postgresql", "redis", "whatsapp", "trizen"],
+  "envVars": {
+    "NODE_ENV": "production",
+    "PORT": "4010",
+    "LOG_LEVEL": "info",
+    "POSTGRES_URI": "YOUR_POSTGRES_URI_HERE",
+    "POSTGRES_URI_DEV": "",
+    "USE_DEV_DATABASE": "false",
+    "REDIS_URL": "YOUR_REDIS_URL_HERE",
+    "JWT_SECRET": "YOUR_JWT_SECRET_MIN_16_CHARS",
+    "JWT_EXPIRES_IN": "7d",
+    "ENCRYPTION_KEY": "YOUR_64_CHAR_HEX_AES_KEY",
+    "SERVICE_AUTH_TOKEN": "YOUR_SERVICE_AUTH_TOKEN",
+    "CORS_ORIGIN": "https://trizendialog.apps.extrahand.in",
+    "META_API_VERSION": "v23.0",
+    "META_APP_ID": "YOUR_META_APP_ID",
+    "META_WEBHOOK_VERIFY_TOKEN": "YOUR_META_WEBHOOK_VERIFY_TOKEN",
+    "WHATSAPP_SEND_RATE_LIMIT_MAX": "80",
+    "WHATSAPP_SEND_RATE_LIMIT_WINDOW_MS": "1000"
+  },
+  "volumes": [
+    {
+      "name": "app-logs",
+      "path": "/app/logs"
+    }
+  ],
+  "restart": {
+    "policy": "unless-stopped",
+    "maximumRetryCount": 10
+  },
+  "resources": {
+    "memory": "512Mi",
+    "cpu": "0.5"
+  },
+  "networking": {
+    "publishAllPorts": false,
+    "enableTcpProxy": false
+  }
+}

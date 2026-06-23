@@ -1,0 +1,290 @@
+---
+description: TrizenDialog implementation style. Prefer functional modules. Classes only when they provide measurable value.
+alwaysApply: false
+---
+# Functional-First Architecture
+
+Functional modules are the default.
+
+Classes are the exception.
+
+Before creating a class, verify that a class provides actual value.
+
+If a class provides no measurable benefit, use functions.
+
+---
+
+# Use Functions By Default
+
+The following MUST be implemented as functional modules unless a strong justification exists:
+
+* controllers
+* handlers
+* services
+* repositories
+* orchestrators
+* processors
+* validators
+* mappers
+* queries
+* utility modules
+
+Preferred:
+
+```ts
+export async function createTemplate() {}
+```
+
+NOT:
+
+```ts
+export class TemplateService {
+  async createTemplate() {}
+}
+```
+
+when no state exists.
+
+---
+
+# Classes Are Allowed Only When
+
+At least one of the following is true:
+
+* internal state exists
+* lifecycle management exists
+* external resources are managed
+* multiple instances are required
+* configuration must be encapsulated
+* polymorphism is required
+* subscriptions/registrations are maintained
+
+If none apply, use functions.
+
+---
+
+# Examples
+
+## GOOD CLASS
+
+MetaWhatsAppClient
+
+Reason:
+
+* encapsulates Graph API communication
+* owns configuration
+* owns HTTP behavior
+* may have retries, rate limiting, interceptors
+
+Example:
+
+```ts
+export class MetaWhatsAppClient {}
+```
+
+---
+
+## GOOD CLASS
+
+AppError hierarchy
+
+Reason:
+
+* instanceof checks
+* typed error handling
+
+Example:
+
+```ts
+export class AppError extends Error {}
+```
+
+---
+
+## GOOD CLASS
+
+BullMQ Worker wrapper
+
+Reason:
+
+* owns worker lifecycle
+* manages external resources
+
+---
+
+## GOOD CLASS
+
+EventBus
+
+Reason:
+
+* maintains subscriptions
+* owns internal state
+
+---
+
+# DO NOT CREATE CLASSES FOR ORGANIZATION ONLY
+
+FORBIDDEN:
+
+```ts
+export class TemplateService {
+  constructor(
+    private readonly templateRepository: TemplateRepository
+  ) {}
+
+  async createTemplate() {}
+}
+```
+
+when:
+
+* no state exists
+* only one implementation exists
+* constructor exists only for wiring
+
+Use functions instead.
+
+---
+
+# Controllers
+
+Controllers should be plain handlers.
+
+Preferred:
+
+```ts
+export async function createTemplateHandler(
+  req: Request,
+  res: Response
+) {}
+```
+
+Avoid:
+
+```ts
+class TemplateController {}
+```
+
+unless controller state actually exists.
+
+---
+
+# Services
+
+Services should usually be exported functions.
+
+Preferred:
+
+```ts
+export async function createTemplate(dto) {}
+```
+
+Avoid service classes that only group functions.
+
+---
+
+# Repositories
+
+Repositories should be functional.
+
+Preferred:
+
+```ts
+export async function findTemplateById(id: string) {}
+```
+
+Avoid:
+
+```ts
+class TemplateRepository {}
+```
+
+unless repository state/configuration exists.
+
+---
+
+# Orchestrators
+
+Orchestrators should be functional.
+
+Preferred:
+
+```ts
+export async function processEventIngest() {}
+```
+
+Avoid:
+
+```ts
+class NotificationOrchestrator {}
+```
+
+unless workflow state exists.
+
+---
+
+# Dependency Injection
+
+Do NOT create constructor injection chains.
+
+Avoid:
+
+```ts
+new Service()
+new Controller(service)
+```
+
+when modules are stateless.
+
+Dependencies should be passed explicitly as parameters or imported from module boundaries.
+
+---
+
+# Simplicity Rule
+
+If a class only:
+
+* groups methods
+* forwards calls
+* wraps functions
+* exists for folder symmetry
+
+then the class should be removed.
+
+Use a functional module instead.
+
+---
+
+# Final Review
+
+Before creating a class verify:
+
+* Does it own state?
+* Does it manage resources?
+* Does it manage lifecycle?
+* Does it need multiple instances?
+* Does it provide polymorphism?
+
+If all answers are NO:
+
+Use functions.
+
+---
+
+# File Growth Rule
+
+Start with the minimum number of files.
+
+Do not create:
+
+* orchestrator.ts
+* mapper.ts
+* queries/
+* types.ts
+
+until there is a demonstrated need.
+
+Create files incrementally as complexity grows.
+
+Avoid empty architectural placeholders.

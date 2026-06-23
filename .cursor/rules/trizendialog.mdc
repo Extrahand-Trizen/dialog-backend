@@ -1,0 +1,610 @@
+---
+description: TrizenDialog Backend Standards
+globs: trizendialog-backend/**
+alwaysApply: false
+---
+
+# TrizenDialog Backend Rules
+
+**Scope:** `trizendialog-backend/` only.
+
+## Core Principle
+
+MUST optimize for:
+
+1. Correctness
+2. Readability
+3. Maintainability
+4. Performance
+
+in that order.
+
+MUST prefer the simplest correct implementation.
+
+MUST NOT introduce abstractions unless there are at least 3 real use cases.
+
+MUST avoid bloated code, bloated logic, bloated architecture, bloated utility layers, and unnecessary files.
+
+---
+
+## Locked Architecture
+
+MUST follow:
+
+```text
+Controller → Service → Repository → Prisma
+Worker → Processor → Orchestrator → Services
+Orchestrator → Services only
+```
+
+Repositories MUST NOT call other repositories.
+
+Services MUST NOT access Prisma directly.
+
+Controllers MUST NOT access Prisma directly.
+
+Controllers MUST NOT contain business logic.
+
+Workers MUST NOT contain business logic.
+
+Processors MUST delegate to orchestrators or services only.
+
+MUST NOT create a global `pipelines/` folder. Use `*.orchestrator.ts` inside modules.
+
+MUST NOT create a global `queries/` folder. Use `modules/*/queries/` for read-only reporting.
+
+Domain pub/sub lives in `infrastructure/eventBus/` — NOT `modules/events/`.
+
+Event ingest API lives in `modules/notifications/` — route remains `POST /api/v1/events`.
+
+---
+
+## Dependency Rules
+
+Dependencies MUST NOT be instantiated inside business logic.
+
+Prefer functional composition.
+
+Pass dependencies through function parameters, factories, or module boundaries when needed.
+
+Constructor injection is allowed only when classes are justified by the class usage rules in `implementation-style.mdc`.
+
+FORBIDDEN inside controllers, services, orchestrators, workers, and processors:
+
+```typescript
+const repo = new UserRepository();
+const service = new UserService();
+```
+
+Object creation belongs in composition/bootstrap code (e.g. `server.ts`, module factories).
+
+---
+
+## Dependency Graph
+
+MUST avoid circular dependencies.
+
+FORBIDDEN:
+
+```text
+A → B → A
+```
+
+Modules MUST remain acyclic.
+
+If a circular dependency appears:
+
+- extract shared logic to `shared/`
+- introduce an orchestrator
+- redesign module ownership
+
+---
+
+## Modules
+
+Allowed modules:
+
+- health
+- auth
+- apiKeys
+- whatsapp
+- templates
+- notificationRules
+- notifications
+- messages
+- webhooks
+- dashboard
+- analytics
+- integrations
+
+New modules require a clear domain boundary and ownership.
+
+MUST NOT add `modules/campaigns/` in V1.
+
+---
+
+## API Versioning
+
+All routes MUST live under `/api/v1`.
+
+MUST NOT create non-versioned APIs.
+
+Route registration MUST go through `src/api/v1/`.
+
+---
+
+## Environment Variables
+
+Environment variables MUST be accessed only through `config/env.ts`.
+
+FORBIDDEN outside `config/env.ts`:
+
+```typescript
+process.env.*
+```
+
+MUST use Zod-validated configuration objects from `validateEnv()`.
+
+---
+
+## Response Contract
+
+All successful responses MUST use `AppResponse`.
+
+All failures MUST use `AppError`.
+
+Controllers MUST NOT return custom response structures.
+
+Success format:
+
+```json
+{
+  "success": true,
+  "message": "string",
+  "data": "object | array | null",
+  "meta": "object (optional)"
+}
+```
+
+Error format:
+
+```json
+{
+  "success": false,
+  "message": "string",
+  "errorCode": "string",
+  "details": "object (optional)"
+}
+```
+
+Controllers MUST use:
+
+- `AppResponse.success()`
+- `AppResponse.created()`
+- `AppResponse.updated()`
+- `AppResponse.deleted()`
+- `AppResponse.paginated()`
+
+FORBIDDEN in controllers:
+
+- `res.json(...)` with custom payloads
+- `res.send(...)` with custom payloads
+- `res.status(...).json(...)` with custom payloads
+
+---
+
+## Error Handling
+
+MUST use:
+
+- `ValidationError`
+- `UnauthorizedError`
+- `ForbiddenError`
+- `NotFoundError`
+- `ConflictError`
+- `RateLimitError`
+- `ExternalServiceError`
+
+MUST NOT throw generic `Error` for business logic.
+
+All errors MUST pass through `global errorHandler`.
+
+Empty catch blocks are FORBIDDEN.
+
+---
+
+## TypeScript
+
+MUST use strict typing.
+
+FORBIDDEN:
+
+- `any`
+- `unknown as any`
+
+MUST use Zod for request validation.
+
+Types MUST be inferred from Zod:
+
+```typescript
+type CreateTemplateDto = z.infer<typeof CreateTemplateSchema>;
+```
+
+MUST NOT duplicate interfaces and Zod schemas.
+
+---
+
+## Prisma Rules
+
+Prisma access is ONLY allowed inside repositories.
+
+FORBIDDEN — `prisma.*` inside:
+
+- controllers
+- services
+- orchestrators
+- workers
+- processors
+
+Repositories MUST select only required fields.
+
+MUST avoid blanket `include` when `select` is sufficient.
+
+Repositories MUST return domain DTOs — not raw Prisma models.
+
+Services and orchestrators MUST NOT import Prisma-generated types.
+
+FORBIDDEN outside repositories:
+
+```typescript
+import { User } from '@prisma/client';
+```
+
+MUST NOT leak `@prisma/client` types unless explicitly justified in a comment on the repository boundary.
+
+---
+
+## Date Rules
+
+MUST store timestamps in UTC.
+
+Database is the source of truth for `createdAt` and `updatedAt`.
+
+MUST NOT manually set `createdAt` / `updatedAt` when Prisma `@default(now())` and `@updatedAt` manage them.
+
+All API responses MUST return ISO-8601 timestamps.
+
+---
+
+## PostgreSQL Rules
+
+Filtering MUST happen in SQL.
+
+Sorting MUST happen in SQL.
+
+Pagination MUST happen in SQL.
+
+FORBIDDEN:
+
+```typescript
+const rows = await prisma.x.findMany();
+return rows.filter(...).sort(...);
+```
+
+Every list endpoint MUST support pagination.
+
+For high-volume tables:
+
+- `Message`
+- `WebhookEvent`
+- `NotificationExecution`
+
+MUST prefer cursor pagination over offset pagination.
+
+MUST assume `Message` and `WebhookEvent` can reach 1M+ rows.
+
+MUST NOT run unbounded `findMany()` on user-facing APIs.
+
+MUST avoid expensive `count()` on every page request for large tables unless required.
+
+Raw SQL MUST use parameterized queries only.
+
+FORBIDDEN: string concatenation in SQL.
+
+---
+
+## Index Rules
+
+When introducing `WHERE`, `ORDER BY`, `JOIN`, or `UNIQUE` constraints, indexes MUST be considered.
+
+Every new repository query MUST be reviewed for indexing requirements.
+
+MUST NOT add indexes without a query-pattern justification.
+
+---
+
+## Transaction Rules
+
+MUST use transactions when multiple writes must succeed or fail together.
+
+Examples:
+
+- `EventIngest` + `NotificationExecution`
+- `Message` + `NotificationExecution`
+- `Template` + `TemplateVersion`
+
+FORBIDDEN: external API calls inside transactions.
+
+Transactions MUST be kept short.
+
+---
+
+## Query Files
+
+Simple queries MUST stay in repositories.
+
+Complex reporting queries MUST live in `modules/*/queries/*.query.ts`.
+
+Query files are READ ONLY.
+
+FORBIDDEN in query files:
+
+- `INSERT`
+- `UPDATE`
+- `DELETE`
+
+---
+
+## Performance Rules
+
+Time complexity MUST be considered.
+
+Prefer: `O(1)`, `O(log n)`, `O(n)`.
+
+Avoid: `O(n²)`, `O(n³)` unless data size is guaranteed small and documented.
+
+---
+
+## N+1 Rules
+
+FORBIDDEN:
+
+```typescript
+for (...) {
+  await prisma...
+}
+```
+
+FORBIDDEN:
+
+```typescript
+for (...) {
+  await externalApi...
+}
+```
+
+MUST prefer: joins, targeted `include`, `createMany`, batch operations, transactions.
+
+---
+
+## Collection Rules
+
+FORBIDDEN: `array.find(...)` inside loops when a `Map` provides O(1) lookup.
+
+FORBIDDEN: `array.includes(...)` inside loops when a `Set` provides O(1) lookup.
+
+MUST avoid unnecessary `.filter().map().filter().reduce()` chains when one pass is sufficient.
+
+---
+
+## Promise Rules
+
+MUST NOT blindly use `Promise.all()`.
+
+Before `Promise.all()`, MUST evaluate: item count, memory usage, API rate limits, database load.
+
+Large workloads MUST use queues, chunking, or concurrency limits.
+
+---
+
+## Memory Rules
+
+MUST NOT load unbounded datasets into memory.
+
+Every large dataset MUST paginate, batch, or stream when appropriate.
+
+---
+
+## Meta / WhatsApp Rules
+
+All Graph API calls MUST go through `infrastructure/meta/MetaWhatsAppClient.ts`.
+
+FORBIDDEN:
+
+```typescript
+axios.post('https://graph.facebook.com/...')
+```
+
+outside `MetaWhatsAppClient`.
+
+Meta is the source of truth.
+
+MUST NOT create local approval states that diverge from Meta.
+
+MUST encrypt access tokens and app secrets before storage.
+
+MUST respect Meta rate limits — use Redis-backed rate limiting per `phoneNumberId` in send workers.
+
+MUST pause or block sends when `PhoneNumber.qualityRating` is `RED` (when configured).
+
+---
+
+## Webhook Rules
+
+Webhook controllers MUST:
+
+1. Verify signature
+2. Persist `WebhookEvent`
+3. Enqueue `webhook-ingest`
+4. Return `200` immediately
+
+Webhook business logic is FORBIDDEN in controllers.
+
+Webhook processing MUST happen in `webhook.orchestrator.ts` via queue.
+
+MUST deduplicate webhooks using `metaEventId` or equivalent unique constraint.
+
+MUST propagate `correlationId` when linking webhook events to messages.
+
+Webhook payloads MUST be stored exactly as received from Meta.
+
+MUST NOT mutate, normalize, or strip fields from payload JSON before persistence.
+
+Raw persisted payload is the audit source of truth for replay and debugging.
+
+---
+
+## BullMQ Rules
+
+Work expected to exceed ~200ms MUST be queued.
+
+Examples:
+
+- Meta sends
+- Template sync
+- Event → rule → send processing
+- Bulk sends
+- Analytics rollups
+
+Jobs MUST be idempotent, retry-safe, and concurrency-safe.
+
+Processors MUST be thin — MUST NOT contain business logic.
+
+MUST NOT retry validation errors, malformed payloads, or missing entities.
+
+MUST retry transient failures only (network timeout, 429, 5xx) with bounded backoff.
+
+Job payloads MUST be typed — MUST NOT use `any` for job data.
+
+---
+
+## Redis Rules
+
+Redis access MUST be centralized through `infrastructure/redis/`.
+
+MUST NOT create ad-hoc Redis clients in modules, services, or workers.
+
+MUST reuse shared Redis connections for BullMQ and rate limiting.
+
+---
+
+## Idempotency Rules
+
+`POST /api/v1/events` MUST support `idempotencyKey` with a unique constraint per organization.
+
+Webhook ingest MUST deduplicate via unique `metaEventId` when available.
+
+Send workers MUST handle duplicate job execution without duplicate Meta sends when possible.
+
+---
+
+## Logging
+
+FORBIDDEN:
+
+- `console.log`
+- `console.error`
+- `console.warn`
+
+MUST use:
+
+- `logger.info()`
+- `logger.warn()`
+- `logger.error()`
+
+MUST include `correlationId` in logs when available.
+
+See **Security Rules** for forbidden log content.
+
+---
+
+## Security Rules
+
+MUST NOT log:
+
+- secrets
+- access tokens
+- app secrets
+- API keys
+- OTPs
+- webhook signatures
+- full phone numbers
+
+Sensitive values MUST be masked before logging when diagnostic output is required.
+
+MUST encrypt credentials at rest (access tokens, app secrets).
+
+---
+
+## Testability
+
+Business logic MUST be testable.
+
+MUST avoid hidden dependencies and global mutable state.
+
+MUST prefer pure functions where possible.
+
+Complex logic MUST be isolated from Express and BullMQ (services, orchestrators, mappers).
+
+Processors and controllers MUST remain thin so core logic can be unit-tested without HTTP or Redis.
+
+---
+
+## AI Code Smells
+
+MUST refactor before presenting code if any of the following exist:
+
+- `any`
+- N+1 queries
+- nested loops with await
+- repeated array scans
+- repeated database calls
+- repeated external API calls
+- duplicated DTOs
+- duplicated validation
+- duplicated types
+- utility used only once
+- wrapper used only once
+- abstraction used only once
+- unnecessary files
+- unnecessary classes
+- Prisma types leaked outside repositories
+- `process.env` outside `config/env.ts`
+- `new Repository()` / `new Service()` inside business code
+- circular module dependencies
+
+---
+
+## Final Review Checklist
+
+Before generating code, verify:
+
+- Uses `AppResponse`
+- Uses `AppError`
+- Prisma only in repository
+- Repository DTO boundaries respected — no `@prisma/client` in services/orchestrators
+- Zod validation present
+- No `any`
+- Environment variables accessed only via `config/env.ts`
+- No circular dependencies
+- No secrets in logs
+- No ad-hoc `new Repository()` / `new Service()` in business code — use functional composition
+- Pagination present on list endpoints
+- Indexes considered
+- No N+1
+- Queue used where appropriate
+- Idempotency handled
+- `correlationId` propagated
+- Simplest possible implementation
+
+If a simpler solution exists, MUST use it.

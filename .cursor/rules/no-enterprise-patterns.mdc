@@ -1,0 +1,159 @@
+---
+description: Prevent unnecessary enterprise patterns in TrizenDialog.
+alwaysApply: false
+---
+# No Enterprise Boilerplate
+
+TrizenDialog is a pragmatic Node.js service.
+
+Do not introduce enterprise patterns unless a measurable need exists.
+
+---
+
+## Forbidden By Default
+
+Do not create:
+
+* BaseController
+* BaseService
+* BaseRepository
+* AbstractRepository
+* GenericRepository
+* RepositoryFactory
+* ServiceFactory
+* ControllerFactory
+* DI Containers
+* Service Locators
+* Decorator-based frameworks
+* Interface-per-class patterns
+* Generic CRUD abstractions
+
+unless there are at least 3 real implementations requiring them.
+
+---
+
+## No Interface For Single Implementation
+
+Forbidden:
+
+```text
+UserRepository.ts
+IUserRepository.ts
+```
+
+when only one repository exists.
+
+Forbidden:
+
+```text
+MetaWhatsAppClient.ts
+IMetaWhatsAppClient.ts
+```
+
+when only one implementation exists.
+
+Create interfaces only when multiple implementations are planned.
+
+---
+
+## No Wrapper Around Wrapper
+
+Avoid:
+
+```text
+Controller
+→ Service
+→ Manager
+→ Helper
+→ Repository
+```
+
+Prefer:
+
+```text
+Controller
+→ Service
+→ Repository
+```
+
+or
+
+```text
+Processor
+→ Orchestrator
+→ Services
+```
+
+---
+
+## No Generic CRUD Layers
+
+Avoid:
+
+* `BaseRepository<T>`
+* `GenericCrudService<T>`
+* `AbstractCrudController<T>`
+
+These usually reduce readability and make debugging harder.
+
+Prefer explicit repositories.
+
+---
+
+## File Count Discipline
+
+Do not create files solely for symmetry.
+
+If a module only needs:
+
+* routes.ts
+* service.ts
+
+then create only those files.
+
+Do not create:
+
+* mapper.ts
+* validator.ts
+* repository.ts
+* orchestrator.ts
+
+until they are actually needed.
+
+---
+
+## Constructor Rule
+
+Do not create constructors that only assign dependencies.
+
+Bad:
+
+```ts
+constructor(
+  private readonly repo: UserRepository
+) {}
+```
+
+when repo contains no state and no alternate implementation exists.
+
+Prefer functional composition.
+
+---
+
+## Utility Rule
+
+Do not create utility functions that are used only once.
+
+Keep logic close to where it is used until reuse is proven.
+
+---
+
+## Abstraction Rule
+
+Every abstraction must answer:
+
+* What duplication does it remove?
+* What future change does it simplify?
+* Why can a function not solve this?
+
+If these questions cannot be answered, do not create the abstraction.
