@@ -3,8 +3,13 @@ import { AppError, RateLimitError } from './AppError';
 export class MetaApiError extends AppError {
   readonly httpStatus: number;
 
-  constructor(message: string, errorCode: string, httpStatus: number) {
-    super(message, errorCode, httpStatus >= 500 ? 502 : httpStatus);
+  constructor(
+    message: string,
+    errorCode: string,
+    httpStatus: number,
+    details?: Record<string, unknown>,
+  ) {
+    super(message, errorCode, httpStatus >= 500 ? 502 : httpStatus, details);
     this.httpStatus = httpStatus;
   }
 }

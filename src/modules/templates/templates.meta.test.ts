@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   buildMetaComponentsFromDraft,
+  enrichStoredComponentsWithMediaUrls,
   parseTemplateComponents,
   validateButtonDrafts,
 } from './templates.meta';
@@ -73,6 +74,49 @@ describe('parseTemplateComponents', () => {
     assert.equal(preview.bodyText, 'Browse our latest offers');
     assert.equal(preview.carouselCards?.length, 2);
     assert.equal(preview.carouselCards?.[0]?.buttonText, 'Shop');
+    assert.equal(preview.carouselCards?.[0]?.imageHandle, 'img1');
+    assert.equal(preview.carouselCards?.[1]?.imageHandle, 'img2');
+  });
+
+  it('parses media header handle', () => {
+    const preview = parseTemplateComponents([
+      {
+        type: 'HEADER',
+        format: 'IMAGE',
+        example: { header_handle: ['4::aW1hZ2UvanBlZw==:handle-token'] },
+      },
+      { type: 'BODY', text: 'Hello' },
+    ]);
+
+    assert.equal(preview.headerType, 'image');
+    assert.equal(preview.headerMediaHandle, '4::aW1hZ2UvanBlZw==:handle-token');
+  });
+
+  it('enriches stored components with MinIO preview URLs', () => {
+    const { components } = buildMetaComponentsFromDraft({
+      bodyText: 'Hello',
+      headerMedia: {
+        format: 'IMAGE',
+        handle: 'meta-handle',
+        mediaUrl: 'https://cdn.example.com/header.jpg',
+      },
+    });
+
+    const stored = enrichStoredComponentsWithMediaUrls(components, {
+      bodyText: 'Hello',
+      headerMedia: {
+        format: 'IMAGE',
+        handle: 'meta-handle',
+        mediaUrl: 'https://cdn.example.com/header.jpg',
+      },
+    });
+
+    const preview = parseTemplateComponents(stored);
+    assert.equal(preview.headerMediaUrl, 'https://cdn.example.com/header.jpg');
+    assert.equal(
+      (stored[0]?.example as { header_handle?: string[] })?.header_handle?.[0],
+      'meta-handle',
+    );
   });
 });
 

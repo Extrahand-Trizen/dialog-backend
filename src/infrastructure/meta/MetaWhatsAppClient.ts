@@ -46,11 +46,19 @@ export class MetaWhatsAppClient {
     const body = (await response.json()) as T & MetaGraphErrorBody;
 
     if (!response.ok) {
-      const message =
-        body.error?.message ?? `Meta Graph API request failed (${response.status})`;
+      const graphError = body.error;
+      const detailText = graphError?.error_data?.details ?? graphError?.error_user_msg;
+      const message = detailText
+        ? `${graphError?.message ?? 'Meta Graph API request failed'}: ${detailText}`
+        : (graphError?.message ?? `Meta Graph API request failed (${response.status})`);
       const errorCode =
         response.status === 429 ? 'META_RATE_LIMITED' : 'META_GRAPH_API_ERROR';
-      throw new MetaApiError(message, errorCode, response.status);
+      throw new MetaApiError(message, errorCode, response.status, {
+        metaCode: graphError?.code,
+        metaSubcode: graphError?.error_subcode,
+        metaDetails: graphError?.error_data?.details,
+        fbtraceId: graphError?.fbtrace_id,
+      });
     }
 
     return body;

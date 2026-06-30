@@ -35,6 +35,15 @@ const envSchema = z.object({
   META_APP_ID: z.string().min(1).optional(),
   META_WEBHOOK_VERIFY_TOKEN: z.string().optional(),
 
+  /** MinIO / S3-compatible storage for template header media previews */
+  MINIO_ENDPOINT: z.string().url().optional(),
+  MINIO_ACCESS_KEY: z.string().min(1).optional(),
+  MINIO_SECRET_KEY: z.string().min(1).optional(),
+  MINIO_BUCKET: z.string().min(1).optional(),
+  /** Public base URL for browser access, e.g. https://dialog-minio-api.backend.extrahand.in/template-media */
+  MINIO_PUBLIC_BASE_URL: z.string().url().optional(),
+  MINIO_REGION: z.string().min(1).default('us-east-1'),
+
   WHATSAPP_SEND_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(80),
   WHATSAPP_SEND_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(100).default(1000),
 })

@@ -1,0 +1,176 @@
+{
+  "oldHandle": "4:d29ya19uZWFyX3lvdS5qcGc=:aW1hZ2UvanBlZw==:ARZIlGly91t6Tgfr8e0RsBhfZkxkUnAI4gWAE3RUVewNKQToBNiAo6ryRzi8Y4egRooeiCRWZt51RUPQsnl_s-m4E-GbL6muzyAiT8HILY02bA:e:1783165241:1755934998900486:61590643724664:ARY9l7ypEjESvUTAWDg",
+  "hasOldCache": false,
+  "hasNewCache": true,
+  "attempts": [
+    {
+      "payload": {
+        "category": "UTILITY",
+        "components": [
+          {
+            "type": "HEADER",
+            "format": "IMAGE",
+            "example": {
+              "header_handle": [
+                "4:d29ya19uZWFyX3lvdS5qcGc=:aW1hZ2UvanBlZw==:ARYYvnm32HzXDMNRN1RQJ99NwcNPWVrOCUxN8vgL-gqRBc43uitSaLFUzRHL_F-keH3tewQ8duZVf94CzVnS8u2KeW5SBFg6Y7FZHzpQIXbzJA:e:1783166067:1755934998900486:61590643724664:ARZc_Hjt43HWiZAWsBI"
+              ]
+            }
+          },
+          {
+            "type": "BODY",
+            "text": "New work alert! 📍\n \n{{1}} — a customer nearby needs help with {{2}} in {{3}}.\n\nBe the first to apply and grab this work.",
+            "example": {
+              "body_text": [
+                [
+                  "Fix kitchen sink leak",
+                  "Plumbing",
+                  "Sector 45, Gurgaon"
+                ]
+              ]
+            }
+          },
+          {
+            "type": "BUTTONS",
+            "buttons": [
+              {
+                "type": "URL",
+                "text": "View work",
+                "url": "https://extrahand.in/open/tasks/{{1}}",
+                "example": [
+                  "https://extrahand.in/open/tasks/Fix kitchen sink leak"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "error": "Invalid parameter"
+    },
+    {
+      "payload": "success",
+      "result": {
+        "success": true,
+        "id": "1000336959526025",
+        "name": "extrahand_nearby_work_skill_match",
+        "category": "MARKETING"
+      }
+    },
+    {
+      "payload": {
+        "category": "UTILITY",
+        "components": [
+          {
+            "type": "HEADER",
+            "format": "IMAGE",
+            "example": {
+              "header_handle": [
+                "4:d29ya19uZWFyX3lvdS5qcGc=:aW1hZ2UvanBlZw==:ARZIlGly91t6Tgfr8e0RsBhfZkxkUnAI4gWAE3RUVewNKQToBNiAo6ryRzi8Y4egRooeiCRWZt51RUPQsnl_s-m4E-GbL6muzyAiT8HILY02bA:e:1783165241:1755934998900486:61590643724664:ARY9l7ypEjESvUTAWDg"
+              ]
+            }
+          },
+          {
+            "text": "New work alert! 📍\n \n{{1}} — a customer nearby needs help with {{2}} in {{3}}.\n\nBe the first to apply and grab this work.",
+            "type": "BODY",
+            "example": {
+              "body_text": [
+                [
+                  "Fix kitchen sink leak",
+                  "Plumbing",
+                  "Sector 45, Gurgaon"
+                ]
+              ]
+            }
+          },
+          {
+            "type": "BUTTONS",
+            "buttons": [
+              {
+                "url": "https://extrahand.in/open/tasks/{{1}}",
+                "text": "View work",
+                "type": "URL",
+                "example": [
+                  "https://extrahand.in/open/tasks/Fix kitchen sink leak"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "error": "Invalid parameter"
+    }
+  ],
+  "built": [
+    {
+      "type": "HEADER",
+      "format": "IMAGE",
+      "example": {
+        "header_handle": [
+          "4:d29ya19uZWFyX3lvdS5qcGc=:aW1hZ2UvanBlZw==:ARYYvnm32HzXDMNRN1RQJ99NwcNPWVrOCUxN8vgL-gqRBc43uitSaLFUzRHL_F-keH3tewQ8duZVf94CzVnS8u2KeW5SBFg6Y7FZHzpQIXbzJA:e:1783166067:1755934998900486:61590643724664:ARZc_Hjt43HWiZAWsBI"
+        ]
+      }
+    },
+    {
+      "type": "BODY",
+      "text": "New work alert! 📍\n \n{{1}} — a customer nearby needs help with {{2}} in {{3}}.\n\nBe the first to apply and grab this work.",
+      "example": {
+        "body_text": [
+          [
+            "Fix kitchen sink leak",
+            "Plumbing",
+            "Sector 45, Gurgaon"
+          ]
+        ]
+      }
+    },
+    {
+      "type": "BUTTONS",
+      "buttons": [
+        {
+          "type": "URL",
+          "text": "View work",
+          "url": "https://extrahand.in/open/tasks/{{1}}",
+          "example": [
+            "https://extrahand.in/open/tasks/Fix kitchen sink leak"
+          ]
+        }
+      ]
+    }
+  ],
+  "stored": [
+    {
+      "type": "HEADER",
+      "format": "IMAGE",
+      "example": {
+        "header_handle": [
+          "4:d29ya19uZWFyX3lvdS5qcGc=:aW1hZ2UvanBlZw==:ARZIlGly91t6Tgfr8e0RsBhfZkxkUnAI4gWAE3RUVewNKQToBNiAo6ryRzi8Y4egRooeiCRWZt51RUPQsnl_s-m4E-GbL6muzyAiT8HILY02bA:e:1783165241:1755934998900486:61590643724664:ARY9l7ypEjESvUTAWDg"
+        ]
+      }
+    },
+    {
+      "text": "New work alert! 📍\n \n{{1}} — a customer nearby needs help with {{2}} in {{3}}.\n\nBe the first to apply and grab this work.",
+      "type": "BODY",
+      "example": {
+        "body_text": [
+          [
+            "Fix kitchen sink leak",
+            "Plumbing",
+            "Sector 45, Gurgaon"
+          ]
+        ]
+      }
+    },
+    {
+      "type": "BUTTONS",
+      "buttons": [
+        {
+          "url": "https://extrahand.in/open/tasks/{{1}}",
+          "text": "View work",
+          "type": "URL",
+          "example": [
+            "https://extrahand.in/open/tasks/Fix kitchen sink leak"
+          ]
+        }
+      ]
+    }
+  ]
+}

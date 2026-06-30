@@ -4,7 +4,13 @@ export type MetaGraphErrorBody = {
     type?: string;
     code?: number;
     error_subcode?: number;
+    error_user_msg?: string;
+    error_user_title?: string;
     fbtrace_id?: string;
+    error_data?: {
+      messaging_product?: string;
+      details?: string;
+    };
   };
 };
 

@@ -1,9 +1,10 @@
 import { decryptField } from '../../infrastructure/encryption/fieldCrypto';
 import { getMetaWhatsAppClient } from '../../infrastructure/meta';
 import { ConflictError, ValidationError } from '../../shared/errors/AppError';
+import { MetaApiError } from '../../shared/errors/sendErrors';
 import { findWhatsAppAccountSecrets } from '../whatsapp/whatsapp.repository';
 import { getOrganizationWhatsAppAccount } from '../whatsapp/whatsapp.service';
-import { buildMetaComponentsFromDraft } from './templates.meta';
+import { buildMetaComponentsFromDraft, enrichStoredComponentsWithMediaUrls } from './templates.meta';
 import {
   requireTemplateByName,
   findTemplateByName,
@@ -14,11 +15,20 @@ import type { CreateTemplateInput, TemplateDetailDto } from './templates.schemas
 function mapCreateInputToDraft(input: CreateTemplateInput) {
   return {
     templateFormat: input.templateFormat ?? 'standard',
-    carouselCards: input.carouselCards,
+    carouselCards: input.carouselCards?.map((card) => ({
+      imageHandle: card.imageHandle,
+      imageMediaUrl: card.imageMediaUrl,
+      bodyText: card.bodyText,
+      button: card.button,
+    })),
     headerText: input.header && 'text' in input.header ? input.header.text : undefined,
     headerMedia:
       input.header && 'format' in input.header
-        ? { format: input.header.format, handle: input.header.handle }
+        ? {
+            format: input.header.format,
+            handle: input.header.handle,
+            mediaUrl: input.header.mediaUrl,
+          }
         : undefined,
     bodyText: input.body.text,
     footerText: input.footer?.text,
@@ -50,7 +60,9 @@ export async function createOrganizationTemplate(
     });
   }
 
-  const { components, variableSchema } = buildMetaComponentsFromDraft(mapCreateInputToDraft(input));
+  const draft = mapCreateInputToDraft(input);
+  const { components, variableSchema } = buildMetaComponentsFromDraft(draft);
+  const storedComponents = enrichStoredComponentsWithMediaUrls(components, draft);
 
   const accessToken = decryptField(secrets.accessTokenEnc);
   const metaClient = getMetaWhatsAppClient();
@@ -75,7 +87,7 @@ export async function createOrganizationTemplate(
       category: input.category,
       language: input.language,
       metaStatus: 'PENDING',
-      components,
+      components: storedComponents,
       variableSchema,
       rejectionReason: null,
     });
@@ -89,6 +101,10 @@ export async function createOrganizationTemplate(
   } catch (error) {
     if (error instanceof ConflictError || error instanceof ValidationError) {
       throw error;
+    }
+
+    if (error instanceof MetaApiError) {
+      throw new ValidationError(error.message, error.details);
     }
 
     const message = error instanceof Error ? error.message : 'Meta template create failed';

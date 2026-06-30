@@ -1,8 +1,13 @@
 import { validateEnv } from '../../config/env';
 import { decryptField } from '../../infrastructure/encryption/fieldCrypto';
 import { getMetaWhatsAppClient } from '../../infrastructure/meta';
+import {
+  isTemplateMediaStorageConfigured,
+  uploadTemplateMediaObject,
+} from '../../infrastructure/storage/templateMediaStorage';
 import { MetaApiError } from '../../shared/errors/sendErrors';
-import { ValidationError } from '../../shared/errors/AppError';
+import { NotFoundError, ValidationError } from '../../shared/errors/AppError';
+import { getCachedTemplateMedia, type CachedTemplateMedia } from './media.cache';
 import { findWhatsAppAccountSecrets } from '../whatsapp/whatsapp.repository';
 import { getOrganizationWhatsAppAccount } from '../whatsapp/whatsapp.service';
 import {
@@ -23,6 +28,12 @@ export async function uploadTemplateHeaderMedia(input: {
   if (!metaAppId) {
     throw new ValidationError(
       'META_APP_ID is not configured on the server — required for template media upload',
+    );
+  }
+
+  if (!isTemplateMediaStorageConfigured()) {
+    throw new ValidationError(
+      'MinIO is not configured — set MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY, and MINIO_BUCKET',
     );
   }
 
@@ -63,14 +74,23 @@ export async function uploadTemplateHeaderMedia(input: {
   const metaClient = getMetaWhatsAppClient();
 
   try {
-    const { handle } = await metaClient.uploadResumableMedia(metaAppId, accessToken, {
-      fileName: input.fileName,
-      fileBuffer: input.buffer,
-      mimeType,
-    });
+    const [{ handle }, stored] = await Promise.all([
+      metaClient.uploadResumableMedia(metaAppId, accessToken, {
+        fileName: input.fileName,
+        fileBuffer: input.buffer,
+        mimeType,
+      }),
+      uploadTemplateMediaObject({
+        organizationId: input.organizationId,
+        fileName: input.fileName,
+        mimeType,
+        buffer: input.buffer,
+      }),
+    ]);
 
     return {
       handle,
+      mediaUrl: stored.mediaUrl,
       format: resolveMediaFormat(mimeType),
       mimeType,
       fileName: input.fileName,
@@ -90,4 +110,21 @@ export async function uploadTemplateHeaderMedia(input: {
       error instanceof MetaApiError ? error.httpStatus : 502,
     );
   }
+}
+
+export async function getTemplateMediaPreview(input: {
+  organizationId: string;
+  handle: string;
+}): Promise<CachedTemplateMedia> {
+  const handle = input.handle.trim();
+  if (!handle) {
+    throw new ValidationError('Media handle is required');
+  }
+
+  const media = await getCachedTemplateMedia(input.organizationId, handle);
+  if (!media) {
+    throw new NotFoundError('Template media preview not found', 'TEMPLATE_MEDIA_NOT_FOUND');
+  }
+
+  return media;
 }

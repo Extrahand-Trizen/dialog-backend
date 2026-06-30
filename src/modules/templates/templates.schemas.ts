@@ -50,6 +50,8 @@ export type TemplateSummaryPreviewDto = {
   templateKind: 'standard' | 'carousel';
   headerType: 'none' | 'text' | 'image' | 'video' | 'document';
   headerText?: string;
+  headerMediaHandle?: string;
+  headerMediaUrl?: string;
   bodyText: string;
   footerText?: string;
   buttons: TemplateButtonPreviewDto[];
@@ -57,6 +59,8 @@ export type TemplateSummaryPreviewDto = {
     headerType: 'image';
     bodyText: string;
     buttonText?: string;
+    imageHandle?: string;
+    imageMediaUrl?: string;
   }>;
 };
 
@@ -147,6 +151,7 @@ const templateButtonSchema = z.discriminatedUnion('type', [
 
 const carouselCardSchema = z.object({
   imageHandle: z.string().min(1).max(2048),
+  imageMediaUrl: z.string().url().max(2048).optional(),
   bodyText: z.string().min(1).max(160),
   button: z
     .object({
@@ -226,6 +231,7 @@ export const createTemplateSchema = z
         z.object({
           format: z.enum(['IMAGE', 'VIDEO', 'DOCUMENT']),
           handle: z.string().min(1).max(2048),
+          mediaUrl: z.string().url().max(2048).optional(),
         }),
       ])
       .optional(),
@@ -263,6 +269,7 @@ const updateTemplateBodySchema = z
         z.object({
           format: z.enum(['IMAGE', 'VIDEO', 'DOCUMENT']),
           handle: z.string().min(1).max(2048),
+          mediaUrl: z.string().url().max(2048).optional(),
         }),
       ])
       .optional(),

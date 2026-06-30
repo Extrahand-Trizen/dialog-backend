@@ -1,20 +1,30 @@
 import { decryptField } from '../../infrastructure/encryption/fieldCrypto';
 import { getMetaWhatsAppClient } from '../../infrastructure/meta';
 import { ValidationError } from '../../shared/errors/AppError';
+import { MetaApiError } from '../../shared/errors/sendErrors';
 import { findWhatsAppAccountSecrets } from '../whatsapp/whatsapp.repository';
 import { getOrganizationWhatsAppAccount } from '../whatsapp/whatsapp.service';
-import { buildMetaComponentsFromDraft, mapMetaTemplateStatus } from './templates.meta';
+import { buildMetaComponentsFromDraft, enrichStoredComponentsWithMediaUrls, mapMetaTemplateStatus } from './templates.meta';
 import { requireTemplateById, upsertTemplateFromMeta } from './templates.repository';
 import type { TemplateDetailDto, UpdateTemplateInput } from './templates.schemas';
 
 function mapUpdateInputToDraft(input: UpdateTemplateInput) {
   return {
     templateFormat: input.templateFormat ?? 'standard',
-    carouselCards: input.carouselCards,
+    carouselCards: input.carouselCards?.map((card) => ({
+      imageHandle: card.imageHandle,
+      imageMediaUrl: card.imageMediaUrl,
+      bodyText: card.bodyText,
+      button: card.button,
+    })),
     headerText: input.header && 'text' in input.header ? input.header.text : undefined,
     headerMedia:
       input.header && 'format' in input.header
-        ? { format: input.header.format, handle: input.header.handle }
+        ? {
+            format: input.header.format,
+            handle: input.header.handle,
+            mediaUrl: input.header.mediaUrl,
+          }
         : undefined,
     bodyText: input.body.text,
     footerText: input.footer?.text,
@@ -55,7 +65,9 @@ export async function updateOrganizationTemplate(
     });
   }
 
-  const { components, variableSchema } = buildMetaComponentsFromDraft(mapUpdateInputToDraft(input));
+  const draft = mapUpdateInputToDraft(input);
+  const { components, variableSchema } = buildMetaComponentsFromDraft(draft);
+  const storedComponents = enrichStoredComponentsWithMediaUrls(components, draft);
 
   const accessToken = decryptField(secrets.accessTokenEnc);
   const metaClient = getMetaWhatsAppClient();
@@ -65,7 +77,6 @@ export async function updateOrganizationTemplate(
       existing.metaTemplateId,
       accessToken,
       {
-        category: existing.category,
         components,
       },
     );
@@ -78,13 +89,17 @@ export async function updateOrganizationTemplate(
       category: existing.category,
       language: existing.language,
       metaStatus: mapMetaTemplateStatus(metaResponse.status),
-      components,
+      components: storedComponents,
       variableSchema,
       rejectionReason: null,
     });
   } catch (error) {
     if (error instanceof ValidationError) {
       throw error;
+    }
+
+    if (error instanceof MetaApiError) {
+      throw new ValidationError(error.message, error.details);
     }
 
     const message = error instanceof Error ? error.message : 'Meta template update failed';

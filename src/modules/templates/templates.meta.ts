@@ -1,4 +1,5 @@
 import type { MetaMessageTemplateComponent, MetaMessageTemplateNode } from '../../infrastructure/meta';
+import { normalizeTemplateMediaPublicUrl } from '../../infrastructure/storage/templateMediaStorage';
 import type { MetaTemplateStatus, TemplateCategory } from './templates.schemas';
 
 export type MappedMetaTemplate = {
@@ -22,12 +23,16 @@ export type CarouselCardPreview = {
   headerType: 'image';
   bodyText: string;
   buttonText?: string;
+  imageHandle?: string;
+  imageMediaUrl?: string;
 };
 
 export type TemplatePreviewDto = {
   templateKind: 'standard' | 'carousel';
   headerType: 'none' | 'text' | 'image' | 'video' | 'document';
   headerText?: string;
+  headerMediaHandle?: string;
+  headerMediaUrl?: string;
   bodyText: string;
   footerText?: string;
   buttons: TemplateButtonPreview[];
@@ -55,6 +60,7 @@ export type TemplateVariableSchema = {
 
 export type CarouselCardDraft = {
   imageHandle: string;
+  imageMediaUrl?: string;
   bodyText: string;
   button?: { type: 'URL'; text: string; url: string };
 };
@@ -63,7 +69,7 @@ export type TemplateDraftInput = {
   templateFormat?: 'standard' | 'carousel';
   carouselCards?: CarouselCardDraft[];
   headerText?: string;
-  headerMedia?: { format: 'IMAGE' | 'VIDEO' | 'DOCUMENT'; handle: string };
+  headerMedia?: { format: 'IMAGE' | 'VIDEO' | 'DOCUMENT'; handle: string; mediaUrl?: string };
   bodyText: string;
   footerText?: string;
   variableSamples?: Record<string, string>;
@@ -72,6 +78,10 @@ export type TemplateDraftInput = {
 };
 
 const NAMED_PLACEHOLDER_RE = /\{\{([a-zA-Z_][a-zA-Z0-9_]*|\d+)\}\}/g;
+
+/** Dialog-only field stored in component examples — never sent to Meta. */
+export const DIALOG_HEADER_MEDIA_URL_KEY = 'header_media_url';
+export const DIALOG_CAROUSEL_IMAGE_MEDIA_URL_KEY = 'image_media_url';
 
 export function mapMetaTemplateCategory(value: string | undefined): TemplateCategory {
   switch (value?.toUpperCase()) {
@@ -263,6 +273,20 @@ export function parseTemplateComponents(components: unknown): TemplatePreviewDto
       const format = raw.format;
       if (format && String(format).toUpperCase() !== 'TEXT') {
         preview.headerType = parseHeaderType(format);
+        const example = isRecord(raw.example) ? raw.example : null;
+        const handles =
+          example && Array.isArray(example.header_handle) ? example.header_handle : [];
+        const handle = typeof handles[0] === 'string' ? handles[0].trim() : '';
+        if (handle) {
+          preview.headerMediaHandle = handle;
+        }
+        const mediaUrl =
+          example && typeof example[DIALOG_HEADER_MEDIA_URL_KEY] === 'string'
+            ? example[DIALOG_HEADER_MEDIA_URL_KEY].trim()
+            : '';
+        if (mediaUrl) {
+          preview.headerMediaUrl = normalizeTemplateMediaPublicUrl(mediaUrl);
+        }
       } else if (typeof raw.text === 'string' && raw.text.trim()) {
         preview.headerType = 'text';
         preview.headerText = raw.text;
@@ -315,6 +339,8 @@ export function parseTemplateComponents(components: unknown): TemplatePreviewDto
 
         let cardBody = '';
         let buttonText: string | undefined;
+        let imageHandle: string | undefined;
+        let imageMediaUrl: string | undefined;
 
         for (const compRaw of cardRaw.components) {
           if (!isRecord(compRaw) || typeof compRaw.type !== 'string') {
@@ -322,6 +348,23 @@ export function parseTemplateComponents(components: unknown): TemplatePreviewDto
           }
 
           const compType = compRaw.type.toUpperCase();
+          if (compType === 'HEADER') {
+            const example = isRecord(compRaw.example) ? compRaw.example : null;
+            const handles =
+              example && Array.isArray(example.header_handle) ? example.header_handle : [];
+            const handle = typeof handles[0] === 'string' ? handles[0].trim() : '';
+            if (handle) {
+              imageHandle = handle;
+            }
+            const mediaUrl =
+              example && typeof example[DIALOG_CAROUSEL_IMAGE_MEDIA_URL_KEY] === 'string'
+                ? example[DIALOG_CAROUSEL_IMAGE_MEDIA_URL_KEY].trim()
+                : '';
+            if (mediaUrl) {
+              imageMediaUrl = normalizeTemplateMediaPublicUrl(mediaUrl);
+            }
+          }
+
           if (compType === 'BODY' && typeof compRaw.text === 'string') {
             cardBody = compRaw.text;
           }
@@ -338,6 +381,8 @@ export function parseTemplateComponents(components: unknown): TemplatePreviewDto
           headerType: 'image',
           bodyText: cardBody,
           ...(buttonText ? { buttonText } : {}),
+          ...(imageHandle ? { imageHandle } : {}),
+          ...(imageMediaUrl ? { imageMediaUrl } : {}),
         });
       }
     }
@@ -415,7 +460,7 @@ function buildMetaUrlButton(
       NAMED_PLACEHOLDER_RE,
       (_match, key: string) => {
         const index = keyToIndex.get(key) ?? 1;
-        return resolveSampleValue(key, index, variableSamples);
+        return encodeURIComponent(resolveSampleValue(key, index, variableSamples));
       },
     );
     metaButton.example = [exampleUrl];
@@ -703,4 +748,63 @@ export function buildMetaComponentsFromDraft(draft: TemplateDraftInput): {
   }
 
   return { components, variableSchema };
+}
+
+/** Attach Dialog-only MinIO preview URLs to stored components (not sent to Meta). */
+export function enrichStoredComponentsWithMediaUrls(
+  components: MetaMessageTemplateComponent[],
+  draft: TemplateDraftInput,
+): MetaMessageTemplateComponent[] {
+  const stored = JSON.parse(JSON.stringify(components)) as MetaMessageTemplateComponent[];
+
+  if (draft.headerMedia?.mediaUrl?.trim()) {
+    const header = stored.find(
+      (component) =>
+        component.type === 'HEADER' &&
+        component.format &&
+        String(component.format).toUpperCase() !== 'TEXT',
+    );
+    if (header) {
+      const example =
+        header.example && typeof header.example === 'object' && !Array.isArray(header.example)
+          ? { ...(header.example as Record<string, unknown>) }
+          : {};
+      example[DIALOG_HEADER_MEDIA_URL_KEY] = normalizeTemplateMediaPublicUrl(
+        draft.headerMedia.mediaUrl.trim(),
+      );
+      header.example = example;
+    }
+  }
+
+  if (draft.templateFormat === 'carousel' && draft.carouselCards?.length) {
+    const carousel = stored.find((component) => component.type === 'CAROUSEL') as
+      | { cards?: Array<{ components?: MetaMessageTemplateComponent[] }> }
+      | undefined;
+
+    carousel?.cards?.forEach((card, index) => {
+      const mediaUrl = draft.carouselCards?.[index]?.imageMediaUrl?.trim();
+      if (!mediaUrl || !Array.isArray(card.components)) {
+        return;
+      }
+
+      const header = card.components.find(
+        (component) =>
+          component.type === 'HEADER' &&
+          component.format &&
+          String(component.format).toUpperCase() === 'IMAGE',
+      );
+      if (!header) {
+        return;
+      }
+
+      const example =
+        header.example && typeof header.example === 'object' && !Array.isArray(header.example)
+          ? { ...(header.example as Record<string, unknown>) }
+          : {};
+      example[DIALOG_CAROUSEL_IMAGE_MEDIA_URL_KEY] = normalizeTemplateMediaPublicUrl(mediaUrl);
+      header.example = example;
+    });
+  }
+
+  return stored;
 }
