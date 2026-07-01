@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { MessageType, Prisma } from '@prisma/client';
 import { getPrismaClient } from '../../infrastructure/prisma/client';
 import { InternalServerError, NotFoundError } from '../../shared/errors/AppError';
 import type { MetaSendTemplateComponent } from '../../infrastructure/meta';
@@ -24,6 +24,7 @@ export async function updateMessageFromStatusWebhook(input: {
   pricingModel?: string;
   billable?: boolean;
   metaConversationId?: string;
+  rawStatusPayload?: object;
 }): Promise<MessageStatusUpdateResult | null> {
   const prisma = getPrismaClient();
   if (!prisma) {
@@ -39,16 +40,16 @@ export async function updateMessageFromStatusWebhook(input: {
     return null;
   }
 
-  if (existing.status === input.status) {
-    return null;
-  }
-
   const eventTime = input.timestampSeconds
     ? new Date(input.timestampSeconds * 1000)
     : new Date();
 
+  const statusChanged = existing.status !== input.status;
+
   const data: {
     status: MessageStatus;
+    statusUpdatedAt: Date;
+    rawStatusPayload?: Prisma.InputJsonValue;
     errorCode?: string | null;
     errorMessage?: string | null;
     pricingCategory?: string | null;
@@ -61,6 +62,10 @@ export async function updateMessageFromStatusWebhook(input: {
     failedAt?: Date;
   } = {
     status: input.status,
+    statusUpdatedAt: eventTime,
+    ...(input.rawStatusPayload
+      ? { rawStatusPayload: input.rawStatusPayload as Prisma.InputJsonValue }
+      : {}),
     errorCode: input.errorCode ?? null,
     errorMessage: input.errorMessage ?? null,
     pricingCategory: input.pricingCategory ?? null,
@@ -88,12 +93,58 @@ export async function updateMessageFromStatusWebhook(input: {
     select: { id: true, correlationId: true },
   });
 
+  if (!statusChanged && !input.rawStatusPayload) {
+    return null;
+  }
+
   return {
     messageId: updated.id,
     organizationId: existing.organizationId,
     correlationId: updated.correlationId,
     status: input.status,
   };
+}
+
+export async function createInboundMessageFromWebhook(input: {
+  organizationId: string;
+  phoneNumberId: string;
+  metaMessageId: string;
+  customerPhone: string;
+  messageType: MessageType;
+  bodyText?: string;
+  rawPayload: object;
+}): Promise<{ messageId: string; created: boolean }> {
+  const prisma = getPrismaClient();
+  if (!prisma) {
+    throw new InternalServerError('Database not configured', 'DATABASE_NOT_CONFIGURED');
+  }
+
+  const existing = await prisma.message.findUnique({
+    where: { metaMessageId: input.metaMessageId },
+    select: { id: true },
+  });
+
+  if (existing) {
+    return { messageId: existing.id, created: false };
+  }
+
+  const row = await prisma.message.create({
+    data: {
+      organizationId: input.organizationId,
+      phoneNumberId: input.phoneNumberId,
+      direction: 'INBOUND',
+      recipientPhone: input.customerPhone,
+      type: input.messageType,
+      metaMessageId: input.metaMessageId,
+      bodyText: input.bodyText,
+      status: 'DELIVERED',
+      statusUpdatedAt: new Date(),
+      rawPayload: input.rawPayload as Prisma.InputJsonValue,
+    },
+    select: { id: true },
+  });
+
+  return { messageId: row.id, created: true };
 }
 
 export async function createOutboundTemplateMessage(

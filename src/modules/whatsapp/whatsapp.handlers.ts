@@ -4,6 +4,7 @@ import { getValidated } from '../../middleware/validate';
 import type { CreateWhatsAppAccountInput } from './whatsapp.schemas';
 import {
   connectWhatsAppAccount,
+  disconnectWhatsAppAccount,
   getOrganizationWhatsAppAccount,
   listAccountPhoneNumbers,
   listOrganizationWhatsAppAccounts,
@@ -39,6 +40,12 @@ export async function getAccountHandler(req: Request, res: Response): Promise<vo
   const { organizationId } = requireJwtContext(req);
   const account = await getOrganizationWhatsAppAccount(organizationId, req.params.id);
   AppResponse.success(res, 'WhatsApp account retrieved', account);
+}
+
+export async function disconnectAccountHandler(req: Request, res: Response): Promise<void> {
+  const { userId, organizationId } = requireJwtContext(req);
+  await disconnectWhatsAppAccount(organizationId, req.params.id, userId);
+  AppResponse.deleted(res, 'WhatsApp account disconnected');
 }
 
 export async function syncAccountHandler(req: Request, res: Response): Promise<void> {

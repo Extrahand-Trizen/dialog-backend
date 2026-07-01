@@ -224,14 +224,19 @@ export function extractPhoneQualityUpdates(payload: unknown): MetaPhoneQualityUp
 }
 
 export type MetaTemplateStatusEvent = {
-  templateId: string;
+  metaTemplateId?: string;
+  metaTemplateName?: string;
+  language?: string;
   event: string;
   rejectionReason?: string;
+  rawValue: JsonRecord;
 };
 
-export function extractTemplateStatusEvent(payload: unknown): MetaTemplateStatusEvent | null {
+export function extractTemplateStatusUpdates(payload: unknown): MetaTemplateStatusEvent[] {
+  const updates: MetaTemplateStatusEvent[] = [];
+
   if (!isRecord(payload)) {
-    return null;
+    return updates;
   }
 
   for (const entry of asArray(payload.entry)) {
@@ -248,28 +253,179 @@ export function extractTemplateStatusEvent(payload: unknown): MetaTemplateStatus
         continue;
       }
 
-      const templateId =
-        typeof change.value.message_template_id === 'string'
-          ? change.value.message_template_id
-          : typeof change.value.message_template_name === 'string'
-            ? change.value.message_template_name
-            : null;
+      const value = change.value;
+      const metaTemplateId =
+        typeof value.message_template_id === 'string' ? value.message_template_id : undefined;
+      const metaTemplateName =
+        typeof value.message_template_name === 'string' ? value.message_template_name : undefined;
+      const language =
+        typeof value.message_template_language === 'string'
+          ? value.message_template_language
+          : undefined;
 
       const event =
-        typeof change.value.event === 'string' ? change.value.event.toUpperCase() : 'UNKNOWN';
+        typeof value.event === 'string' ? value.event.toUpperCase() : 'UNKNOWN';
 
       const rejectionReason =
-        typeof change.value.reason === 'string'
-          ? change.value.reason
-          : typeof change.value.rejected_reason === 'string'
-            ? change.value.rejected_reason
+        typeof value.reason === 'string'
+          ? value.reason
+          : typeof value.rejected_reason === 'string'
+            ? value.rejected_reason
             : undefined;
 
-      if (templateId) {
-        return { templateId, event, rejectionReason };
+      if (metaTemplateId || metaTemplateName) {
+        updates.push({
+          metaTemplateId,
+          metaTemplateName,
+          language,
+          event,
+          rejectionReason,
+          rawValue: value,
+        });
       }
     }
   }
 
-  return null;
+  return updates;
+}
+
+/** @deprecated Use extractTemplateStatusUpdates */
+export function extractTemplateStatusEvent(payload: unknown): MetaTemplateStatusEvent | null {
+  const updates = extractTemplateStatusUpdates(payload);
+  return updates[0] ?? null;
+}
+
+export type MetaInboundMessage = {
+  metaMessageId: string;
+  metaPhoneNumberId: string;
+  customerPhone: string;
+  messageType: string;
+  bodyText?: string;
+  timestamp?: string;
+  rawPayload: JsonRecord;
+};
+
+function mapInboundMessageType(type: string): string {
+  switch (type.toLowerCase()) {
+    case 'text':
+      return 'TEXT';
+    case 'image':
+      return 'IMAGE';
+    case 'video':
+      return 'VIDEO';
+    case 'document':
+      return 'DOCUMENT';
+    case 'audio':
+      return 'AUDIO';
+    case 'interactive':
+      return 'INTERACTIVE';
+    default:
+      return 'UNKNOWN';
+  }
+}
+
+export function extractInboundMessages(payload: unknown): MetaInboundMessage[] {
+  const messages: MetaInboundMessage[] = [];
+
+  if (!isRecord(payload)) {
+    return messages;
+  }
+
+  for (const entry of asArray(payload.entry)) {
+    if (!isRecord(entry)) {
+      continue;
+    }
+
+    for (const change of asArray(entry.changes)) {
+      if (!isRecord(change) || change.field !== 'messages' || !isRecord(change.value)) {
+        continue;
+      }
+
+      const value = change.value;
+      const metadata = isRecord(value.metadata) ? value.metadata : undefined;
+      const metaPhoneNumberId =
+        metadata && typeof metadata.phone_number_id === 'string'
+          ? metadata.phone_number_id
+          : undefined;
+
+      if (!metaPhoneNumberId) {
+        continue;
+      }
+
+      for (const message of asArray(value.messages)) {
+        if (!isRecord(message) || typeof message.id !== 'string' || typeof message.from !== 'string') {
+          continue;
+        }
+
+        const messageType =
+          typeof message.type === 'string' ? mapInboundMessageType(message.type) : 'UNKNOWN';
+
+        let bodyText: string | undefined;
+        if (messageType === 'TEXT' && isRecord(message.text) && typeof message.text.body === 'string') {
+          bodyText = message.text.body;
+        }
+
+        messages.push({
+          metaMessageId: message.id,
+          metaPhoneNumberId,
+          customerPhone: message.from,
+          messageType,
+          bodyText,
+          timestamp: typeof message.timestamp === 'string' ? message.timestamp : undefined,
+          rawPayload: message,
+        });
+      }
+    }
+  }
+
+  return messages;
+}
+
+const SENSITIVE_KEY_RE = /token|secret|password|authorization/i;
+
+export function sanitizeWebhookValueForLog(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(sanitizeWebhookValueForLog);
+  }
+
+  if (!isRecord(value)) {
+    return value;
+  }
+
+  const sanitized: JsonRecord = {};
+  for (const [key, nested] of Object.entries(value)) {
+    if (SENSITIVE_KEY_RE.test(key)) {
+      sanitized[key] = '[REDACTED]';
+      continue;
+    }
+    sanitized[key] = sanitizeWebhookValueForLog(nested);
+  }
+  return sanitized;
+}
+
+export function extractWebhookChangesForLog(payload: unknown): Array<{ field: string; value: unknown }> {
+  const changes: Array<{ field: string; value: unknown }> = [];
+
+  if (!isRecord(payload)) {
+    return changes;
+  }
+
+  for (const entry of asArray(payload.entry)) {
+    if (!isRecord(entry)) {
+      continue;
+    }
+
+    for (const change of asArray(entry.changes)) {
+      if (!isRecord(change) || typeof change.field !== 'string') {
+        continue;
+      }
+
+      changes.push({
+        field: change.field,
+        value: sanitizeWebhookValueForLog(change.value),
+      });
+    }
+  }
+
+  return changes;
 }

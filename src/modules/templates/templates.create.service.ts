@@ -6,8 +6,10 @@ import { findWhatsAppAccountSecrets } from '../whatsapp/whatsapp.repository';
 import { getOrganizationWhatsAppAccount } from '../whatsapp/whatsapp.service';
 import { buildMetaComponentsFromDraft, enrichStoredComponentsWithMediaUrls } from './templates.meta';
 import {
+  findActiveTemplateForCreate,
+  isTemplateReplaceableForCreate,
   requireTemplateByName,
-  findTemplateByName,
+  softDeleteTemplate,
   upsertTemplateFromMeta,
 } from './templates.repository';
 import type { CreateTemplateInput, TemplateDetailDto } from './templates.schemas';
@@ -43,12 +45,25 @@ export async function createOrganizationTemplate(
   userId: string,
   input: CreateTemplateInput,
 ): Promise<TemplateDetailDto> {
-  const existing = await findTemplateByName(organizationId, input.name, input.language);
+  const existing = await findActiveTemplateForCreate({
+    organizationId,
+    metaTemplateName: input.name,
+    language: input.language,
+  });
   if (existing) {
-    throw new ConflictError(
-      'Template already exists for this name and language',
-      'TEMPLATE_ALREADY_EXISTS',
-    );
+    const replaceable = await isTemplateReplaceableForCreate(organizationId, existing);
+    if (!replaceable) {
+      throw new ConflictError(
+        'Template already exists for this name and language on a connected WhatsApp account',
+        'TEMPLATE_ALREADY_EXISTS',
+      );
+    }
+
+    await softDeleteTemplate({
+      organizationId,
+      templateId: existing.id,
+      deletedById: userId,
+    });
   }
 
   await getOrganizationWhatsAppAccount(organizationId, input.whatsAppAccountId);
@@ -82,6 +97,7 @@ export async function createOrganizationTemplate(
     const result = await upsertTemplateFromMeta({
       organizationId,
       userId,
+      whatsAppAccountId: input.whatsAppAccountId,
       metaTemplateId: metaResponse.id,
       metaTemplateName: input.name,
       category: input.category,

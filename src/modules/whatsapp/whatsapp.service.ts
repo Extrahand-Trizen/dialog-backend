@@ -12,18 +12,24 @@ import type {
 } from './whatsapp.schemas';
 import { mapMetaPhoneNode } from './whatsapp.meta';
 import {
+  countMessagesForAccount,
+  deleteWhatsAppAccount,
   ensureDefaultPhoneNumber,
+  findDisconnectedWhatsAppAccountByMetaWabaId,
   findWhatsAppAccountById,
   findWhatsAppAccountSecrets,
   insertWhatsAppAccount,
   listPhoneNumbersByAccount,
   listWhatsAppAccountsByOrganization,
+  markWhatsAppAccountDisconnected,
+  reactivateWhatsAppAccount,
   setDefaultPhoneNumber,
   findPhoneNumberInOrganization,
   findDefaultPhoneForOrganization,
   updateWhatsAppAccountAfterSync,
   upsertPhoneNumberFromMeta,
 } from './whatsapp.repository';
+import { softDeleteTemplatesForWhatsAppAccount } from '../templates/templates.repository';
 
 async function syncPhoneNumbersForAccount(
   organizationId: string,
@@ -89,15 +95,29 @@ export async function connectWhatsAppAccount(
   const metaClient = getMetaWhatsAppClient();
   const waba = await metaClient.getWaba(input.metaWabaId, input.accessToken);
 
-  const account = await insertWhatsAppAccount({
+  const disconnected = await findDisconnectedWhatsAppAccountByMetaWabaId(
     organizationId,
-    metaWabaId: input.metaWabaId,
-    name: input.name ?? waba.name,
-    accessTokenEnc: encryptField(input.accessToken),
-    appSecretEnc: encryptField(input.appSecret),
-    webhookVerifyToken: input.webhookVerifyToken,
-    createdById: userId,
-  });
+    input.metaWabaId,
+  );
+
+  const account = disconnected
+    ? await reactivateWhatsAppAccount({
+        accountId: disconnected.id,
+        name: input.name ?? waba.name,
+        accessTokenEnc: encryptField(input.accessToken),
+        appSecretEnc: encryptField(input.appSecret),
+        webhookVerifyToken: input.webhookVerifyToken,
+        updatedById: userId,
+      })
+    : await insertWhatsAppAccount({
+        organizationId,
+        metaWabaId: input.metaWabaId,
+        name: input.name ?? waba.name,
+        accessTokenEnc: encryptField(input.accessToken),
+        appSecretEnc: encryptField(input.appSecret),
+        webhookVerifyToken: input.webhookVerifyToken,
+        createdById: userId,
+      });
 
   let phoneNumbers: PhoneNumberDto[] = [];
   if (input.syncPhones) {
@@ -158,6 +178,48 @@ export async function setAccountDefaultPhoneNumber(
     phoneNumberId,
     updatedById: userId,
   });
+}
+
+export async function disconnectWhatsAppAccount(
+  organizationId: string,
+  accountId: string,
+  userId: string,
+): Promise<void> {
+  const secrets = await findWhatsAppAccountSecrets(organizationId, accountId);
+  if (!secrets) {
+    throw new NotFoundError('WhatsApp account not found', 'WHATSAPP_ACCOUNT_NOT_FOUND');
+  }
+
+  if (isEncryptionConfigured()) {
+    try {
+      const accessToken = decryptField(secrets.accessTokenEnc);
+      const metaClient = getMetaWhatsAppClient();
+      await metaClient.unsubscribeFromWaba(secrets.account.metaWabaId, accessToken);
+    } catch {
+      // Best effort: local disconnect should still proceed if Meta unsubscribe fails
+      // (e.g. token already revoked or app was never subscribed).
+    }
+  }
+
+  await softDeleteTemplatesForWhatsAppAccount({
+    organizationId,
+    whatsAppAccountId: accountId,
+    deletedById: userId,
+  });
+
+  const messageCount = await countMessagesForAccount(accountId);
+  if (messageCount > 0) {
+    await markWhatsAppAccountDisconnected({
+      organizationId,
+      accountId,
+      accessTokenEnc: encryptField(''),
+      appSecretEnc: encryptField(''),
+      updatedById: userId,
+    });
+    return;
+  }
+
+  await deleteWhatsAppAccount(organizationId, accountId);
 }
 
 export async function resolvePhoneForNotification(

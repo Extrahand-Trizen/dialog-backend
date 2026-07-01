@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { AppError } from '../../shared/errors/AppError';
+import logger from '../../infrastructure/logging/logger';
 import { ingestMetaWebhook, verifyMetaWebhookSubscription } from './webhooks.service';
 
 export async function metaWebhookVerifyHandler(req: Request, res: Response): Promise<void> {
@@ -16,7 +17,7 @@ export async function metaWebhookVerifyHandler(req: Request, res: Response): Pro
       res.sendStatus(error.statusCode === 401 ? 403 : error.statusCode);
       return;
     }
-    res.sendStatus(500);
+    res.sendStatus(403);
   }
 }
 
@@ -32,12 +33,13 @@ export async function metaWebhookReceiveHandler(req: Request, res: Response): Pr
           : undefined,
       correlationId: req.correlationId,
     });
-    res.status(200).send('EVENT_RECEIVED');
   } catch (error) {
-    if (error instanceof AppError) {
-      res.sendStatus(error.statusCode);
-      return;
-    }
-    res.sendStatus(500);
+    const message = error instanceof Error ? error.message : 'Webhook ingest failed';
+    logger.warn('Meta webhook ingest failed — returning 200 to avoid Meta retries', {
+      correlationId: req.correlationId,
+      message,
+    });
   }
+
+  res.status(200).send('EVENT_RECEIVED');
 }

@@ -166,7 +166,7 @@ export async function listWhatsAppAccountsByOrganization(
   }
 
   const rows = await prisma.whatsAppAccount.findMany({
-    where: { organizationId },
+    where: { organizationId, status: { not: 'DISCONNECTED' } },
     orderBy: { createdAt: 'desc' },
     select: {
       ...accountSelect,
@@ -175,6 +175,21 @@ export async function listWhatsAppAccountsByOrganization(
   });
 
   return rows.map(toAccountDto);
+}
+
+export async function listConnectedWhatsAppAccountIds(organizationId: string): Promise<string[]> {
+  const prisma = getPrismaClient();
+  if (!prisma) {
+    return [];
+  }
+
+  const rows = await prisma.whatsAppAccount.findMany({
+    where: { organizationId, status: { not: 'DISCONNECTED' } },
+    select: { id: true },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  return rows.map((row) => row.id);
 }
 
 export async function findWhatsAppAccountById(
@@ -187,7 +202,7 @@ export async function findWhatsAppAccountById(
   }
 
   const row = await prisma.whatsAppAccount.findFirst({
-    where: { id: accountId, organizationId },
+    where: { id: accountId, organizationId, status: { not: 'DISCONNECTED' } },
     select: {
       ...accountSelect,
       _count: { select: { phoneNumbers: true } },
@@ -207,7 +222,11 @@ export async function findWhatsAppAccountSecrets(
   }
 
   const row = await prisma.whatsAppAccount.findFirst({
-    where: { id: accountId, organizationId },
+    where: {
+      id: accountId,
+      organizationId,
+      status: { in: ['ACTIVE', 'ERROR'] },
+    },
     select: {
       ...accountSelect,
       _count: { select: { phoneNumbers: true } },
@@ -395,7 +414,7 @@ export async function findDefaultPhoneForOrganization(
   const defaultPhone = await prisma.phoneNumber.findFirst({
     where: {
       isDefault: true,
-      whatsAppAccount: { organizationId },
+      whatsAppAccount: { organizationId, status: { not: 'DISCONNECTED' } },
     },
     select: phoneSelect,
   });
@@ -405,12 +424,133 @@ export async function findDefaultPhoneForOrganization(
   }
 
   const fallback = await prisma.phoneNumber.findFirst({
-    where: { whatsAppAccount: { organizationId } },
+    where: { whatsAppAccount: { organizationId, status: { not: 'DISCONNECTED' } } },
     orderBy: { createdAt: 'asc' },
     select: phoneSelect,
   });
 
   return fallback ? toPhoneDto(fallback) : null;
+}
+
+export async function countMessagesForAccount(accountId: string): Promise<number> {
+  const prisma = getPrismaClient();
+  if (!prisma) {
+    return 0;
+  }
+
+  return prisma.message.count({
+    where: { phoneNumber: { whatsAppAccountId: accountId } },
+  });
+}
+
+export async function deleteWhatsAppAccount(
+  organizationId: string,
+  accountId: string,
+): Promise<void> {
+  const prisma = getPrismaClient();
+  if (!prisma) {
+    throw new InternalServerError('Database not configured', 'DATABASE_NOT_CONFIGURED');
+  }
+
+  const account = await prisma.whatsAppAccount.findFirst({
+    where: { id: accountId, organizationId },
+    select: { id: true },
+  });
+
+  if (!account) {
+    throw new NotFoundError('WhatsApp account not found', 'WHATSAPP_ACCOUNT_NOT_FOUND');
+  }
+
+  await prisma.whatsAppAccount.delete({
+    where: { id: accountId },
+  });
+}
+
+export async function markWhatsAppAccountDisconnected(input: {
+  organizationId: string;
+  accountId: string;
+  accessTokenEnc: string;
+  appSecretEnc: string;
+  updatedById: string;
+}): Promise<void> {
+  const prisma = getPrismaClient();
+  if (!prisma) {
+    throw new InternalServerError('Database not configured', 'DATABASE_NOT_CONFIGURED');
+  }
+
+  const account = await prisma.whatsAppAccount.findFirst({
+    where: { id: input.accountId, organizationId: input.organizationId },
+    select: { id: true },
+  });
+
+  if (!account) {
+    throw new NotFoundError('WhatsApp account not found', 'WHATSAPP_ACCOUNT_NOT_FOUND');
+  }
+
+  await prisma.whatsAppAccount.update({
+    where: { id: input.accountId },
+    data: {
+      status: 'DISCONNECTED',
+      accessTokenEnc: input.accessTokenEnc,
+      appSecretEnc: input.appSecretEnc,
+      webhookVerifyToken: null,
+      lastError: null,
+      updatedById: input.updatedById,
+    },
+  });
+}
+
+export async function findDisconnectedWhatsAppAccountByMetaWabaId(
+  organizationId: string,
+  metaWabaId: string,
+): Promise<WhatsAppAccountDto | null> {
+  const prisma = getPrismaClient();
+  if (!prisma) {
+    throw new InternalServerError('Database not configured', 'DATABASE_NOT_CONFIGURED');
+  }
+
+  const row = await prisma.whatsAppAccount.findFirst({
+    where: { organizationId, metaWabaId, status: 'DISCONNECTED' },
+    select: {
+      ...accountSelect,
+      _count: { select: { phoneNumbers: true } },
+    },
+  });
+
+  return row ? toAccountDto(row) : null;
+}
+
+export async function reactivateWhatsAppAccount(input: {
+  accountId: string;
+  name?: string;
+  accessTokenEnc: string;
+  appSecretEnc: string;
+  webhookVerifyToken?: string;
+  updatedById: string;
+}): Promise<WhatsAppAccountDto> {
+  const prisma = getPrismaClient();
+  if (!prisma) {
+    throw new InternalServerError('Database not configured', 'DATABASE_NOT_CONFIGURED');
+  }
+
+  const row = await prisma.whatsAppAccount.update({
+    where: { id: input.accountId },
+    data: {
+      name: input.name,
+      accessTokenEnc: input.accessTokenEnc,
+      appSecretEnc: input.appSecretEnc,
+      webhookVerifyToken: input.webhookVerifyToken,
+      status: 'ACTIVE',
+      lastError: null,
+      updatedById: input.updatedById,
+    },
+    select: {
+      ...accountSelect,
+      _count: { select: { phoneNumbers: true } },
+    },
+  });
+
+  return toAccountDto(row);
 }
 
 export async function countPhoneNumbersForAccount(accountId: string): Promise<number> {
@@ -473,7 +613,7 @@ export async function findWhatsAppAccountByMetaWabaId(
   }
 
   const row = await prisma.whatsAppAccount.findFirst({
-    where: { metaWabaId },
+    where: { metaWabaId, status: { not: 'DISCONNECTED' } },
     select: {
       id: true,
       organizationId: true,
@@ -529,4 +669,33 @@ export async function updatePhoneNumberFromQualityWebhook(input: {
       lastHealthCheckAt: new Date(),
     },
   });
+}
+
+export async function findPhoneNumberWithOrganizationByMetaId(metaPhoneNumberId: string): Promise<{
+  phoneNumberId: string;
+  organizationId: string;
+} | null> {
+  const prisma = getPrismaClient();
+  if (!prisma) {
+    throw new InternalServerError('Database not configured', 'DATABASE_NOT_CONFIGURED');
+  }
+
+  const row = await prisma.phoneNumber.findUnique({
+    where: { metaPhoneNumberId },
+    select: {
+      id: true,
+      whatsAppAccount: {
+        select: { organizationId: true },
+      },
+    },
+  });
+
+  if (!row) {
+    return null;
+  }
+
+  return {
+    phoneNumberId: row.id,
+    organizationId: row.whatsAppAccount.organizationId,
+  };
 }

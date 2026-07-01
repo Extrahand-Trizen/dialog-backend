@@ -18,10 +18,13 @@ export function registerTemplateEventHandlers(): void {
       return;
     }
 
+    const isNumericMetaId = /^\d+$/.test(templateId);
+
     await applyTemplateWebhookStatus({
       organizationId,
       metaWabaId,
-      templateId,
+      metaTemplateId: isNumericMetaId ? templateId : undefined,
+      metaTemplateName: isNumericMetaId ? undefined : templateId,
       metaStatus: 'APPROVED',
       correlationId,
     });
@@ -38,10 +41,13 @@ export function registerTemplateEventHandlers(): void {
       return;
     }
 
+    const isNumericMetaId = /^\d+$/.test(templateId);
+
     await applyTemplateWebhookStatus({
       organizationId,
       metaWabaId,
-      templateId,
+      metaTemplateId: isNumericMetaId ? templateId : undefined,
+      metaTemplateName: isNumericMetaId ? undefined : templateId,
       metaStatus: 'REJECTED',
       rejectionReason,
       correlationId,

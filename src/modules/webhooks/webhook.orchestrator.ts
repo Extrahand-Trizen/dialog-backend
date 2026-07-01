@@ -1,16 +1,24 @@
-import { EventBus } from '../../infrastructure/eventBus/EventBus';
 import logger from '../../infrastructure/logging/logger';
-import { updateMessageFromStatusWebhook, type MessageStatus } from '../messages/messages.repository';
+import {
+  createInboundMessageFromWebhook,
+  updateMessageFromStatusWebhook,
+  type MessageStatus,
+} from '../messages/messages.repository';
 import {
   mapMessageStatusToWebhookEvent,
   scheduleOutboundWebhook,
 } from '../outboundWebhooks';
+import { applyTemplateWebhookStatus, mapTemplateWebhookEvent } from '../templates/template.orchestrator';
 import { mapMetaQualityRating } from '../whatsapp/whatsapp.meta';
-import { updatePhoneNumberFromQualityWebhook } from '../whatsapp/whatsapp.repository';
 import {
+  findPhoneNumberWithOrganizationByMetaId,
+  updatePhoneNumberFromQualityWebhook,
+} from '../whatsapp/whatsapp.repository';
+import {
+  extractInboundMessages,
   extractMessageStatusUpdates,
   extractPhoneQualityUpdates,
-  extractTemplateStatusEvent,
+  extractTemplateStatusUpdates,
 } from './webhookPayload';
 import {
   markWebhookEventFailed,
@@ -18,6 +26,7 @@ import {
   markWebhookEventProcessing,
   requireWebhookEventById,
 } from './webhooks.repository';
+import type { MessageType } from '@prisma/client';
 
 function mapMetaDeliveryStatus(status: string): MessageStatus | null {
   switch (status.toLowerCase()) {
@@ -34,11 +43,27 @@ function mapMetaDeliveryStatus(status: string): MessageStatus | null {
   }
 }
 
+function mapInboundMessageType(messageType: string): MessageType {
+  switch (messageType) {
+    case 'TEXT':
+    case 'IMAGE':
+    case 'VIDEO':
+    case 'DOCUMENT':
+    case 'AUDIO':
+    case 'INTERACTIVE':
+    case 'UNKNOWN':
+      return messageType;
+    default:
+      return 'UNKNOWN';
+  }
+}
+
 export async function processWebhookEvent(webhookEventId: string): Promise<void> {
   await markWebhookEventProcessing(webhookEventId);
 
   const event = await requireWebhookEventById(webhookEventId);
   let linkedCorrelationId = event.correlationId;
+  const organizationId = event.organizationId;
 
   try {
     const payload = event.payload;
@@ -63,6 +88,12 @@ export async function processWebhookEvent(webhookEventId: string): Promise<void>
         pricingModel: statusUpdate.pricingModel,
         billable: statusUpdate.billable,
         metaConversationId: statusUpdate.metaConversationId,
+        rawStatusPayload: {
+          id: statusUpdate.id,
+          status: statusUpdate.status,
+          timestamp: statusUpdate.timestamp,
+          recipient_id: statusUpdate.recipientId,
+        },
       });
 
       if (result?.correlationId) {
@@ -81,6 +112,27 @@ export async function processWebhookEvent(webhookEventId: string): Promise<void>
       }
     }
 
+    for (const inbound of extractInboundMessages(payload)) {
+      const phone = await findPhoneNumberWithOrganizationByMetaId(inbound.metaPhoneNumberId);
+      if (!phone) {
+        logger.warn('Inbound message webhook skipped — phone number not found', {
+          metaPhoneNumberId: inbound.metaPhoneNumberId,
+          metaMessageId: inbound.metaMessageId,
+        });
+        continue;
+      }
+
+      await createInboundMessageFromWebhook({
+        organizationId: phone.organizationId,
+        phoneNumberId: phone.phoneNumberId,
+        metaMessageId: inbound.metaMessageId,
+        customerPhone: inbound.customerPhone,
+        messageType: mapInboundMessageType(inbound.messageType),
+        bodyText: inbound.bodyText,
+        rawPayload: inbound.rawPayload,
+      });
+    }
+
     for (const qualityUpdate of extractPhoneQualityUpdates(payload)) {
       await updatePhoneNumberFromQualityWebhook({
         metaPhoneNumberId: qualityUpdate.metaPhoneNumberId,
@@ -91,24 +143,28 @@ export async function processWebhookEvent(webhookEventId: string): Promise<void>
       });
     }
 
-    if (event.eventType === 'MESSAGE_TEMPLATE_STATUS_UPDATE') {
-      const templateEvent = extractTemplateStatusEvent(payload);
-      if (templateEvent?.event === 'APPROVED') {
-        await EventBus.emit('TEMPLATE_APPROVED', {
-          webhookEventId,
-          organizationId: event.organizationId,
-          metaWabaId: event.metaWabaId,
-          templateId: templateEvent.templateId,
-          correlationId: linkedCorrelationId,
-        });
-      } else if (templateEvent?.event === 'REJECTED') {
-        await EventBus.emit('TEMPLATE_REJECTED', {
-          webhookEventId,
-          organizationId: event.organizationId,
-          metaWabaId: event.metaWabaId,
-          templateId: templateEvent.templateId,
-          rejectionReason: templateEvent.rejectionReason,
-          correlationId: linkedCorrelationId,
+    if (organizationId) {
+      for (const templateUpdate of extractTemplateStatusUpdates(payload)) {
+        const metaStatus = mapTemplateWebhookEvent(templateUpdate.event);
+        if (metaStatus === 'UNKNOWN') {
+          logger.info('Ignoring unmapped template webhook event', {
+            event: templateUpdate.event,
+            metaTemplateId: templateUpdate.metaTemplateId,
+            metaTemplateName: templateUpdate.metaTemplateName,
+          });
+          continue;
+        }
+
+        await applyTemplateWebhookStatus({
+          organizationId,
+          metaWabaId: event.metaWabaId ?? '',
+          metaTemplateId: templateUpdate.metaTemplateId,
+          metaTemplateName: templateUpdate.metaTemplateName,
+          language: templateUpdate.language,
+          metaStatus,
+          rejectionReason: templateUpdate.rejectionReason ?? undefined,
+          rawWebhookPayload: templateUpdate.rawValue,
+          correlationId: linkedCorrelationId ?? undefined,
         });
       }
     }

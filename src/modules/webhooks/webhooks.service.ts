@@ -10,10 +10,12 @@ import {
   findWhatsAppAccountByMetaWabaId,
   findWhatsAppAccountByWebhookVerifyToken,
 } from '../whatsapp/whatsapp.repository';
+import { processWebhookEvent } from './webhook.orchestrator';
 import {
   detectWebhookEventType,
   extractMetaEventId,
   extractMetaWabaId,
+  extractWebhookChangesForLog,
   parseWebhookPayload,
 } from './webhookPayload';
 import { verifyMetaWebhookSignature } from './webhookSignature';
@@ -65,6 +67,17 @@ export async function ingestMetaWebhook(input: {
     throw new ValidationError('Invalid JSON webhook body');
   }
 
+  const env = validateEnv();
+  if (env.NODE_ENV !== 'production') {
+    for (const change of extractWebhookChangesForLog(payload)) {
+      logger.info('Meta webhook change received', {
+        correlationId: input.correlationId,
+        field: change.field,
+        value: change.value,
+      });
+    }
+  }
+
   const metaWabaId = extractMetaWabaId(payload);
   if (!metaWabaId) {
     throw new ValidationError('Unable to resolve Meta WABA id from webhook payload');
@@ -110,10 +123,19 @@ export async function ingestMetaWebhook(input: {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Queue enqueue failed';
-    logger.warn('Webhook persisted but queue enqueue failed', {
+    logger.warn('Webhook persisted but queue enqueue failed — processing inline', {
       correlationId: input.correlationId,
       webhookEventId: event.id,
       message,
+    });
+    void processWebhookEvent(event.id).catch((processError) => {
+      const processMessage =
+        processError instanceof Error ? processError.message : 'Inline webhook processing failed';
+      logger.error('Inline webhook processing failed', {
+        correlationId: input.correlationId,
+        webhookEventId: event.id,
+        message: processMessage,
+      });
     });
   }
 }

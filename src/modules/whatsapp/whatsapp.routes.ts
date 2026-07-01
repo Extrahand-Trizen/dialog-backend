@@ -6,6 +6,7 @@ import { validate } from '../../middleware/validate';
 import { createWhatsAppAccountSchema } from './whatsapp.schemas';
 import {
   connectAccountHandler,
+  disconnectAccountHandler,
   getAccountHandler,
   listAccountsHandler,
   listPhoneNumbersHandler,
@@ -26,6 +27,7 @@ export function createWhatsAppRouter(): Router {
     asyncHandler(connectAccountHandler),
   );
   router.get('/accounts/:id', asyncHandler(getAccountHandler));
+  router.delete('/accounts/:id', requireAdmin, asyncHandler(disconnectAccountHandler));
   router.post('/accounts/:id/sync', requireAdmin, asyncHandler(syncAccountHandler));
   router.get('/accounts/:accountId/phone-numbers', asyncHandler(listPhoneNumbersHandler));
   router.post(

@@ -21,6 +21,10 @@ export type MetaWabaResponse = {
   message_template_namespace?: string;
 };
 
+export type MetaUnsubscribeResponse = {
+  success: boolean;
+};
+
 export type MetaPhoneNumberNode = {
   id: string;
   display_phone_number?: string;

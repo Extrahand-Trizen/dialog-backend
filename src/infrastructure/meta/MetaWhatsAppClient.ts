@@ -12,6 +12,7 @@ import type {
   MetaSendMessageResponse,
   MetaSendTemplateComponent,
   MetaSendTemplateRequest,
+  MetaUnsubscribeResponse,
   MetaWabaResponse,
 } from './meta.types';
 
@@ -66,6 +67,15 @@ export class MetaWhatsAppClient {
 
   async getWaba(metaWabaId: string, accessToken: string): Promise<MetaWabaResponse> {
     return this.request<MetaWabaResponse>(`/${metaWabaId}`, accessToken);
+  }
+
+  async unsubscribeFromWaba(
+    metaWabaId: string,
+    accessToken: string,
+  ): Promise<MetaUnsubscribeResponse> {
+    return this.request<MetaUnsubscribeResponse>(`/${metaWabaId}/subscribed_apps`, accessToken, {
+      method: 'DELETE',
+    });
   }
 
   async listPhoneNumbers(

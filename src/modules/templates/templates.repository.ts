@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { getPrismaClient } from '../../infrastructure/prisma/client';
 import { InternalServerError, NotFoundError } from '../../shared/errors/AppError';
+import { listConnectedWhatsAppAccountIds } from '../whatsapp/whatsapp.repository';
 import { extractVariableSchema, parseTemplateComponents } from './templates.meta';
 import type {
   MetaTemplateStatus,
@@ -118,6 +119,110 @@ function toDetailDto(row: TemplateRow): TemplateDetailDto {
   };
 }
 
+function connectedTemplatesFilter(connectedAccountIds: string[]): Prisma.TemplateWhereInput {
+  if (connectedAccountIds.length === 0) {
+    return { id: { in: [] } };
+  }
+
+  return {
+    whatsAppAccountId: { in: connectedAccountIds },
+  };
+}
+
+export async function softDeleteTemplate(input: {
+  organizationId: string;
+  templateId: string;
+  deletedById: string;
+}): Promise<void> {
+  const prisma = getPrismaClient();
+  if (!prisma) {
+    throw new InternalServerError('Database not configured', 'DATABASE_NOT_CONFIGURED');
+  }
+
+  await prisma.template.updateMany({
+    where: {
+      id: input.templateId,
+      organizationId: input.organizationId,
+      deletedAt: null,
+    },
+    data: {
+      deletedAt: new Date(),
+      deletedById: input.deletedById,
+    },
+  });
+}
+
+export async function softDeleteTemplatesForWhatsAppAccount(input: {
+  organizationId: string;
+  whatsAppAccountId: string;
+  deletedById: string;
+}): Promise<void> {
+  const prisma = getPrismaClient();
+  if (!prisma) {
+    throw new InternalServerError('Database not configured', 'DATABASE_NOT_CONFIGURED');
+  }
+
+  await prisma.template.updateMany({
+    where: {
+      organizationId: input.organizationId,
+      whatsAppAccountId: input.whatsAppAccountId,
+      deletedAt: null,
+    },
+    data: {
+      deletedAt: new Date(),
+      deletedById: input.deletedById,
+    },
+  });
+}
+
+export async function findActiveTemplateForCreate(input: {
+  organizationId: string;
+  metaTemplateName: string;
+  language: string;
+}): Promise<{ id: string; whatsAppAccountId: string | null } | null> {
+  const prisma = getPrismaClient();
+  if (!prisma) {
+    throw new InternalServerError('Database not configured', 'DATABASE_NOT_CONFIGURED');
+  }
+
+  return prisma.template.findFirst({
+    where: {
+      organizationId: input.organizationId,
+      metaTemplateName: input.metaTemplateName,
+      language: input.language,
+      deletedAt: null,
+    },
+    select: {
+      id: true,
+      whatsAppAccountId: true,
+    },
+  });
+}
+
+export async function isTemplateReplaceableForCreate(
+  organizationId: string,
+  template: { id: string; whatsAppAccountId: string | null },
+): Promise<boolean> {
+  if (!template.whatsAppAccountId) {
+    return true;
+  }
+
+  const prisma = getPrismaClient();
+  if (!prisma) {
+    return false;
+  }
+
+  const account = await prisma.whatsAppAccount.findFirst({
+    where: {
+      id: template.whatsAppAccountId,
+      organizationId,
+    },
+    select: { status: true },
+  });
+
+  return !account || account.status === 'DISCONNECTED';
+}
+
 export async function listTemplatesByOrganization(input: {
   organizationId: string;
   page: number;
@@ -131,9 +236,12 @@ export async function listTemplatesByOrganization(input: {
     throw new InternalServerError('Database not configured', 'DATABASE_NOT_CONFIGURED');
   }
 
+  const connectedAccountIds = await listConnectedWhatsAppAccountIds(input.organizationId);
+
   const where: Prisma.TemplateWhereInput = {
     organizationId: input.organizationId,
     deletedAt: null,
+    ...connectedTemplatesFilter(connectedAccountIds),
     ...(input.metaStatus ? { metaStatus: input.metaStatus } : {}),
     ...(input.category ? { category: input.category } : {}),
     ...(input.search
@@ -169,11 +277,14 @@ export async function findTemplateById(
     throw new InternalServerError('Database not configured', 'DATABASE_NOT_CONFIGURED');
   }
 
+  const connectedAccountIds = await listConnectedWhatsAppAccountIds(organizationId);
+
   const row = await prisma.template.findFirst({
     where: {
       id: templateId,
       organizationId,
       deletedAt: null,
+      ...connectedTemplatesFilter(connectedAccountIds),
     },
     select: templateSummarySelect,
   });
@@ -283,6 +394,7 @@ export async function resolveTemplateVersionForSend(input: {
 export type UpsertTemplateFromMetaInput = {
   organizationId: string;
   userId: string;
+  whatsAppAccountId?: string;
   metaTemplateId: string;
   metaTemplateName: string;
   category: TemplateCategory;
@@ -315,9 +427,18 @@ export async function upsertTemplateFromMeta(
       metaTemplateName: input.metaTemplateName,
       language: input.language,
       deletedAt: null,
+      ...(input.whatsAppAccountId
+        ? {
+            OR: [
+              { whatsAppAccountId: input.whatsAppAccountId },
+              { whatsAppAccountId: null },
+            ],
+          }
+        : {}),
     },
     select: {
       id: true,
+      whatsAppAccountId: true,
       currentVersion: {
         select: {
           id: true,
@@ -333,6 +454,7 @@ export async function upsertTemplateFromMeta(
       const template = await tx.template.create({
         data: {
           organizationId: input.organizationId,
+          whatsAppAccountId: input.whatsAppAccountId,
           metaTemplateName: input.metaTemplateName,
           metaTemplateId: input.metaTemplateId,
           category: input.category,
@@ -373,6 +495,9 @@ export async function upsertTemplateFromMeta(
     await prisma.template.update({
       where: { id: existing.id },
       data: {
+        ...(input.whatsAppAccountId && !existing.whatsAppAccountId
+          ? { whatsAppAccountId: input.whatsAppAccountId }
+          : {}),
         metaTemplateId: input.metaTemplateId,
         category: input.category,
         metaStatus: input.metaStatus,
@@ -412,6 +537,9 @@ export async function upsertTemplateFromMeta(
     await tx.template.update({
       where: { id: existing.id },
       data: {
+        ...(input.whatsAppAccountId && !existing.whatsAppAccountId
+          ? { whatsAppAccountId: input.whatsAppAccountId }
+          : {}),
         metaTemplateId: input.metaTemplateId,
         category: input.category,
         metaStatus: input.metaStatus,
@@ -428,22 +556,35 @@ export async function updateTemplateStatusFromWebhook(input: {
   organizationId: string;
   metaTemplateId?: string;
   metaTemplateName?: string;
+  language?: string;
   metaStatus: MetaTemplateStatus;
   rejectionReason?: string | null;
+  rawWebhookPayload?: object;
 }): Promise<boolean> {
   const prisma = getPrismaClient();
   if (!prisma) {
     throw new InternalServerError('Database not configured', 'DATABASE_NOT_CONFIGURED');
   }
 
+  const lookupFilters = [
+    ...(input.metaTemplateId ? [{ metaTemplateId: input.metaTemplateId }] : []),
+    ...(input.metaTemplateName && input.language
+      ? [{ metaTemplateName: input.metaTemplateName, language: input.language }]
+      : []),
+    ...(input.metaTemplateName && !input.language
+      ? [{ metaTemplateName: input.metaTemplateName }]
+      : []),
+  ];
+
+  if (lookupFilters.length === 0) {
+    return false;
+  }
+
   const template = await prisma.template.findFirst({
     where: {
       organizationId: input.organizationId,
       deletedAt: null,
-      OR: [
-        ...(input.metaTemplateId ? [{ metaTemplateId: input.metaTemplateId }] : []),
-        ...(input.metaTemplateName ? [{ metaTemplateName: input.metaTemplateName }] : []),
-      ],
+      OR: lookupFilters,
     },
     select: {
       id: true,
@@ -460,7 +601,14 @@ export async function updateTemplateStatusFromWebhook(input: {
   await prisma.$transaction(async (tx) => {
     await tx.template.update({
       where: { id: template.id },
-      data: { metaStatus: input.metaStatus },
+      data: {
+        metaStatus: input.metaStatus,
+        lastWebhookAt: now,
+        ...(input.rawWebhookPayload
+          ? { rawWebhookPayload: input.rawWebhookPayload as Prisma.InputJsonValue }
+          : {}),
+        ...(input.metaTemplateId ? { metaTemplateId: input.metaTemplateId } : {}),
+      },
     });
 
     if (!template.currentVersionId) {

@@ -142,6 +142,7 @@ model WhatsAppAccount {
   createdBy    User?         @relation("WhatsAppAccountCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy    User?         @relation("WhatsAppAccountUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
   phoneNumbers PhoneNumber[]
+  templates    Template[]
 
   @@unique([organizationId, metaWabaId])
   @@index([organizationId, status])
@@ -209,22 +210,26 @@ enum MetaTemplateStatus {
 }
 
 model Template {
-  id               String             @id @default(uuid())
-  organizationId   String
-  metaTemplateName String
-  metaTemplateId   String?
-  category         TemplateCategory
-  language         String             @default("en")
-  metaStatus       MetaTemplateStatus @default(UNKNOWN)
-  currentVersionId String?            @unique
-  createdById      String?
-  updatedById      String?
-  deletedAt        DateTime?          @db.Timestamptz(3)
-  deletedById      String?
-  createdAt        DateTime           @default(now()) @db.Timestamptz(3)
-  updatedAt        DateTime           @updatedAt @db.Timestamptz(3)
+  id                 String             @id @default(uuid())
+  organizationId     String
+  whatsAppAccountId  String?
+  metaTemplateName   String
+  metaTemplateId     String?
+  category           TemplateCategory
+  language           String             @default("en")
+  metaStatus         MetaTemplateStatus @default(UNKNOWN)
+  lastWebhookAt      DateTime?          @db.Timestamptz(3)
+  rawWebhookPayload  Json?
+  currentVersionId   String?            @unique
+  createdById        String?
+  updatedById        String?
+  deletedAt          DateTime?          @db.Timestamptz(3)
+  deletedById        String?
+  createdAt          DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime           @updatedAt @db.Timestamptz(3)
 
   organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  whatsAppAccount   WhatsAppAccount?   @relation(fields: [whatsAppAccountId], references: [id], onDelete: SetNull)
   currentVersion    TemplateVersion?   @relation("TemplateCurrentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
   versions          TemplateVersion[]  @relation("TemplateVersions")
   notificationRules NotificationRule[]
@@ -232,9 +237,10 @@ model Template {
   updatedBy         User?              @relation("TemplateUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
   deletedBy         User?              @relation("TemplateDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
 
-  @@unique([organizationId, metaTemplateName, language])
+  @@index([organizationId, metaTemplateName, language])
   @@index([organizationId, metaStatus])
   @@index([organizationId, deletedAt])
+  @@index([whatsAppAccountId])
 }
 
 model TemplateVersion {
@@ -424,8 +430,11 @@ model Message {
   metaMessageId      String?          @unique
   metaConversationId String?
   status             MessageStatus    @default(QUEUED)
+  statusUpdatedAt    DateTime?        @db.Timestamptz(3)
   components         Json?
   bodyText           String?
+  rawStatusPayload   Json?
+  rawPayload         Json?
   errorCode          String?
   errorMessage       String?
   pricingCategory    String?

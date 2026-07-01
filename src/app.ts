@@ -20,11 +20,13 @@ export function createApp(): Application {
   app.use(requestLogger);
 
   // Meta webhooks require the raw body for HMAC signature verification.
-  app.use(
-    '/api/v1/webhooks/meta',
+  const metaWebhookMiddleware = [
     express.raw({ type: 'application/json', limit: '2mb' }),
     createMetaWebhookRouter(),
-  );
+  ] as const;
+
+  app.use('/api/meta/whatsapp/webhook', ...metaWebhookMiddleware);
+  app.use('/api/v1/webhooks/meta', ...metaWebhookMiddleware);
 
   app.use(express.json({ limit: '2mb' }));
   app.use(express.urlencoded({ extended: true, limit: '2mb' }));

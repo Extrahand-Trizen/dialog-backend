@@ -3,7 +3,7 @@ import { getMetaWhatsAppClient } from '../../infrastructure/meta';
 import logger from '../../infrastructure/logging/logger';
 import { NotFoundError } from '../../shared/errors/AppError';
 import { findWhatsAppAccountSecrets } from '../whatsapp/whatsapp.repository';
-import { mapMetaTemplateNode } from './templates.meta';
+import { mapMetaTemplateNode, mapMetaTemplateStatus } from './templates.meta';
 import {
   updateTemplateStatusFromWebhook,
   upsertTemplateFromMeta,
@@ -39,6 +39,7 @@ export async function syncTemplatesForAccount(input: {
       const result = await upsertTemplateFromMeta({
         organizationId: input.organizationId,
         userId: input.userId,
+        whatsAppAccountId: input.whatsAppAccountId,
         ...mapped,
       });
 
@@ -77,19 +78,22 @@ export async function syncTemplatesForAccount(input: {
 export async function applyTemplateWebhookStatus(input: {
   organizationId: string;
   metaWabaId: string;
-  templateId: string;
+  metaTemplateId?: string;
+  metaTemplateName?: string;
+  language?: string;
   metaStatus: MetaTemplateStatus;
   rejectionReason?: string | null;
+  rawWebhookPayload?: object;
   correlationId?: string;
 }): Promise<void> {
-  const isNumericMetaId = /^\d+$/.test(input.templateId);
-
   const updated = await updateTemplateStatusFromWebhook({
     organizationId: input.organizationId,
-    metaTemplateId: isNumericMetaId ? input.templateId : undefined,
-    metaTemplateName: isNumericMetaId ? undefined : input.templateId,
+    metaTemplateId: input.metaTemplateId,
+    metaTemplateName: input.metaTemplateName,
+    language: input.language,
     metaStatus: input.metaStatus,
     rejectionReason: input.rejectionReason,
+    rawWebhookPayload: input.rawWebhookPayload,
   });
 
   if (!updated) {
@@ -97,8 +101,14 @@ export async function applyTemplateWebhookStatus(input: {
       correlationId: input.correlationId,
       organizationId: input.organizationId,
       metaWabaId: input.metaWabaId,
-      templateId: input.templateId,
+      metaTemplateId: input.metaTemplateId,
+      metaTemplateName: input.metaTemplateName,
+      language: input.language,
       metaStatus: input.metaStatus,
     });
   }
+}
+
+export function mapTemplateWebhookEvent(event: string): MetaTemplateStatus {
+  return mapMetaTemplateStatus(event);
 }
