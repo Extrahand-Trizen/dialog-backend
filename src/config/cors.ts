@@ -8,7 +8,7 @@ export function getCorsOrigins(env: Env = validateEnv()): string[] {
 
   if (env.CORS_ORIGIN?.trim()) {
     for (const origin of env.CORS_ORIGIN.split(',')) {
-      const trimmed = origin.trim();
+      const trimmed = origin.trim().replace(/\/+$/, '');
       if (trimmed) {
         origins.add(trimmed);
       }
@@ -16,7 +16,7 @@ export function getCorsOrigins(env: Env = validateEnv()): string[] {
   }
 
   if (env.FRONTEND_URL?.trim()) {
-    origins.add(env.FRONTEND_URL.trim());
+    origins.add(env.FRONTEND_URL.trim().replace(/\/+$/, ''));
   }
 
   return [...origins];

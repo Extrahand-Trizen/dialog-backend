@@ -46,17 +46,17 @@ Read at **container start** (entrypoint writes `runtime-config.js`). No image re
 
 ## CORS checklist
 
-Production console: [wa-dialog-frontend.backend.extrahand.in](https://wa-dialog-frontend.backend.extrahand.in)  
+Production console: [trizen-dialog.extrahand.in](https://trizen-dialog.extrahand.in)  
 Use the **origin only** (no `/login` or other paths):
 
 ```env
-CORS_ORIGIN=https://wa-dialog-frontend.backend.extrahand.in
+CORS_ORIGIN=https://trizen-dialog.extrahand.in
 ```
 
-Multiple origins (prod + local dev):
+Multiple origins (custom domain + legacy CapRover URL + local dev):
 
 ```env
-CORS_ORIGIN=https://wa-dialog-frontend.backend.extrahand.in,http://localhost:5173
+CORS_ORIGIN=https://trizen-dialog.extrahand.in,https://wa-dialog-frontend.backend.extrahand.in,http://localhost:5173
 ```
 
 After saving, **restart the backend app**. Check logs for `corsOrigins: [...]` on startup.
