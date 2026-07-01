@@ -20,3 +20,9 @@ export const templateMediaPreviewQuerySchema = z.object({
 });
 
 export type TemplateMediaPreviewQuery = z.infer<typeof templateMediaPreviewQuerySchema>;
+
+export const templateMediaAssetQuerySchema = z.object({
+  token: z.string().trim().min(1).max(8192),
+});
+
+export type TemplateMediaAssetQuery = z.infer<typeof templateMediaAssetQuerySchema>;

@@ -2,6 +2,7 @@ import { validateEnv } from '../../config/env';
 import { decryptField } from '../../infrastructure/encryption/fieldCrypto';
 import { getMetaWhatsAppClient } from '../../infrastructure/meta';
 import {
+  getTemplateMediaObject,
   isTemplateMediaStorageConfigured,
   uploadTemplateMediaObject,
 } from '../../infrastructure/storage/templateMediaStorage';
@@ -127,4 +128,15 @@ export async function getTemplateMediaPreview(input: {
   }
 
   return media;
+}
+
+export async function getTemplateMediaAsset(input: {
+  organizationId: string;
+  objectKey: string;
+}): Promise<{ body: Buffer; mimeType: string; fileName: string }> {
+  if (!isTemplateMediaStorageConfigured()) {
+    throw new ValidationError('MinIO template media storage is not configured');
+  }
+
+  return getTemplateMediaObject(input);
 }

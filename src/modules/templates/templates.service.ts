@@ -12,10 +12,12 @@ import type {
   ListTemplatesQuery,
   TemplateDetailDto,
   TemplateSummaryDto,
+  TemplateSyncResultDto,
   UpdateTemplateVariableNamesInput,
   UpdateTemplateInput,
 } from './templates.schemas';
 import { createOrganizationTemplate } from './templates.create.service';
+import { syncTemplatesForAccount } from './template.orchestrator';
 import type { CreateTemplateInput } from './templates.schemas';
 import { updateOrganizationTemplate } from './templates.update.service';
 
@@ -58,25 +60,43 @@ export async function resolveTemplateForSend(
   });
 }
 
-export async function enqueueOrganizationTemplateSync(
+export async function syncOrganizationTemplates(
   organizationId: string,
   userId: string,
   whatsAppAccountId: string,
   correlationId?: string,
-): Promise<EnqueueTemplateSyncResultDto> {
+): Promise<TemplateSyncResultDto> {
   await getOrganizationWhatsAppAccount(organizationId, whatsAppAccountId);
-
-  await enqueueTemplateSync({
+  return syncTemplatesForAccount({
     organizationId,
     whatsAppAccountId,
     userId,
     correlationId,
   });
+}
 
-  return {
-    whatsAppAccountId,
-    queued: true,
-  };
+export async function enqueueOrganizationTemplateSync(
+  organizationId: string,
+  userId: string,
+  whatsAppAccountId: string,
+  correlationId?: string,
+): Promise<EnqueueTemplateSyncResultDto | TemplateSyncResultDto> {
+  try {
+    await getOrganizationWhatsAppAccount(organizationId, whatsAppAccountId);
+    await enqueueTemplateSync({
+      organizationId,
+      whatsAppAccountId,
+      userId,
+      correlationId,
+    });
+
+    return {
+      whatsAppAccountId,
+      queued: true,
+    };
+  } catch {
+    return syncOrganizationTemplates(organizationId, userId, whatsAppAccountId, correlationId);
+  }
 }
 
 export async function createOrganizationTemplateForUser(

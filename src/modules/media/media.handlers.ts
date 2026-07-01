@@ -1,11 +1,17 @@
 import { Request, Response } from 'express';
 import { AppResponse } from '../../shared/responses/AppResponse';
-import { ValidationError } from '../../shared/errors/AppError';
+import { ValidationError, NotFoundError } from '../../shared/errors/AppError';
+import { verifyTemplateMediaAccessToken } from '../../infrastructure/storage/templateMediaAccess';
 import {
+  templateMediaAssetQuerySchema,
   templateMediaPreviewQuerySchema,
   uploadTemplateMediaFieldsSchema,
 } from './media.schemas';
-import { getTemplateMediaPreview, uploadTemplateHeaderMedia } from './media.service';
+import {
+  getTemplateMediaAsset,
+  getTemplateMediaPreview,
+  uploadTemplateHeaderMedia,
+} from './media.service';
 import { assertUploadedFileSize } from './media.middleware';
 
 function requireJwtContext(req: Request): { organizationId: string } {
@@ -40,6 +46,33 @@ export async function uploadTemplateMediaHandler(req: Request, res: Response): P
   });
 
   AppResponse.success(res, 'Media uploaded to Meta', result, undefined, 201);
+}
+
+export async function templateMediaAssetHandler(req: Request, res: Response): Promise<void> {
+  const parsed = templateMediaAssetQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    throw new ValidationError('Invalid media asset query', parsed.error.flatten());
+  }
+
+  const access = verifyTemplateMediaAccessToken(parsed.data.token);
+  if (!access) {
+    throw new NotFoundError('Template media not found', 'TEMPLATE_MEDIA_NOT_FOUND');
+  }
+
+  let media: Awaited<ReturnType<typeof getTemplateMediaAsset>>;
+  try {
+    media = await getTemplateMediaAsset({
+      organizationId: access.organizationId,
+      objectKey: access.objectKey,
+    });
+  } catch {
+    throw new NotFoundError('Template media not found', 'TEMPLATE_MEDIA_NOT_FOUND');
+  }
+
+  res.setHeader('Content-Type', media.mimeType);
+  res.setHeader('Content-Disposition', `inline; filename="${media.fileName.replace(/"/g, '')}"`);
+  res.setHeader('Cache-Control', 'private, max-age=3600');
+  res.send(media.body);
 }
 
 export async function previewTemplateMediaHandler(req: Request, res: Response): Promise<void> {

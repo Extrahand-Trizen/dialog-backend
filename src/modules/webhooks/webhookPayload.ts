@@ -1,5 +1,10 @@
 import { createHash } from 'crypto';
 import type { WebhookEventType } from './webhooks.schemas';
+import {
+  coerceMetaTemplateId,
+  languageLookupVariants,
+  normalizeTemplateRejectionReason,
+} from '../templates/templateLanguage';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -90,9 +95,9 @@ export function extractMetaEventId(payload: unknown, rawBody: string): string {
         }
       }
 
-      if (typeof change.value.message_template_id === 'string') {
+      if (coerceMetaTemplateId(change.value.message_template_id)) {
         const event = typeof change.value.event === 'string' ? change.value.event : 'update';
-        return `${change.value.message_template_id}:${event}`;
+        return `${coerceMetaTemplateId(change.value.message_template_id)}:${event}`;
       }
     }
   }
@@ -254,8 +259,7 @@ export function extractTemplateStatusUpdates(payload: unknown): MetaTemplateStat
       }
 
       const value = change.value;
-      const metaTemplateId =
-        typeof value.message_template_id === 'string' ? value.message_template_id : undefined;
+      const metaTemplateId = coerceMetaTemplateId(value.message_template_id);
       const metaTemplateName =
         typeof value.message_template_name === 'string' ? value.message_template_name : undefined;
       const language =
@@ -267,11 +271,8 @@ export function extractTemplateStatusUpdates(payload: unknown): MetaTemplateStat
         typeof value.event === 'string' ? value.event.toUpperCase() : 'UNKNOWN';
 
       const rejectionReason =
-        typeof value.reason === 'string'
-          ? value.reason
-          : typeof value.rejected_reason === 'string'
-            ? value.rejected_reason
-            : undefined;
+        normalizeTemplateRejectionReason(value.reason) ??
+        normalizeTemplateRejectionReason(value.rejected_reason);
 
       if (metaTemplateId || metaTemplateName) {
         updates.push({

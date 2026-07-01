@@ -4,7 +4,8 @@ import { ConflictError, ValidationError } from '../../shared/errors/AppError';
 import { MetaApiError } from '../../shared/errors/sendErrors';
 import { findWhatsAppAccountSecrets } from '../whatsapp/whatsapp.repository';
 import { getOrganizationWhatsAppAccount } from '../whatsapp/whatsapp.service';
-import { buildMetaComponentsFromDraft, enrichStoredComponentsWithMediaUrls } from './templates.meta';
+import { buildMetaComponentsFromDraft, enrichStoredComponentsWithMediaUrls, mapMetaTemplateStatus } from './templates.meta';
+import { normalizeStoredTemplateLanguage, coerceMetaTemplateId } from './templateLanguage';
 import {
   findActiveTemplateForCreate,
   isTemplateReplaceableForCreate,
@@ -45,10 +46,12 @@ export async function createOrganizationTemplate(
   userId: string,
   input: CreateTemplateInput,
 ): Promise<TemplateDetailDto> {
+  const normalizedLanguage = normalizeStoredTemplateLanguage(input.language);
+
   const existing = await findActiveTemplateForCreate({
     organizationId,
     metaTemplateName: input.name,
-    language: input.language,
+    language: normalizedLanguage,
   });
   if (existing) {
     const replaceable = await isTemplateReplaceableForCreate(organizationId, existing);
@@ -88,7 +91,7 @@ export async function createOrganizationTemplate(
       accessToken,
       {
         name: input.name,
-        language: input.language,
+        language: normalizedLanguage,
         category: input.category,
         components,
       },
@@ -98,17 +101,17 @@ export async function createOrganizationTemplate(
       organizationId,
       userId,
       whatsAppAccountId: input.whatsAppAccountId,
-      metaTemplateId: metaResponse.id,
+      metaTemplateId: coerceMetaTemplateId(metaResponse.id) ?? metaResponse.id,
       metaTemplateName: input.name,
       category: input.category,
-      language: input.language,
-      metaStatus: 'PENDING',
+      language: normalizedLanguage,
+      metaStatus: mapMetaTemplateStatus(metaResponse.status),
       components: storedComponents,
       variableSchema,
       rejectionReason: null,
     });
 
-    if (result.action !== 'created') {
+    if (result.action === 'versioned') {
       throw new ConflictError(
         'Template already exists for this name and language',
         'TEMPLATE_ALREADY_EXISTS',
@@ -127,5 +130,5 @@ export async function createOrganizationTemplate(
     throw new ValidationError(message, { name: input.name });
   }
 
-  return requireTemplateByName(organizationId, input.name, input.language);
+  return requireTemplateByName(organizationId, input.name, normalizedLanguage);
 }

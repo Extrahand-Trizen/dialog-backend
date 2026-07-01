@@ -68,14 +68,13 @@ export async function ingestMetaWebhook(input: {
   }
 
   const env = validateEnv();
-  if (env.NODE_ENV !== 'production') {
-    for (const change of extractWebhookChangesForLog(payload)) {
-      logger.info('Meta webhook change received', {
-        correlationId: input.correlationId,
-        field: change.field,
-        value: change.value,
-      });
-    }
+  for (const change of extractWebhookChangesForLog(payload)) {
+    logger.info('Meta webhook change received', {
+      correlationId: input.correlationId,
+      field: change.field,
+      value: change.value,
+      environment: env.NODE_ENV,
+    });
   }
 
   const metaWabaId = extractMetaWabaId(payload);
@@ -117,25 +116,28 @@ export async function ingestMetaWebhook(input: {
   }
 
   try {
-    await enqueueWebhookIngest({
-      webhookEventId: event.id,
-      correlationId: input.correlationId,
-    });
+    await processWebhookEvent(event.id);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Queue enqueue failed';
-    logger.warn('Webhook persisted but queue enqueue failed — processing inline', {
+    const message = error instanceof Error ? error.message : 'Inline webhook processing failed';
+    logger.warn('Inline webhook processing failed — enqueueing for retry', {
       correlationId: input.correlationId,
       webhookEventId: event.id,
       message,
     });
-    void processWebhookEvent(event.id).catch((processError) => {
-      const processMessage =
-        processError instanceof Error ? processError.message : 'Inline webhook processing failed';
-      logger.error('Inline webhook processing failed', {
+
+    try {
+      await enqueueWebhookIngest({
+        webhookEventId: event.id,
+        correlationId: input.correlationId,
+      });
+    } catch (enqueueError) {
+      const enqueueMessage =
+        enqueueError instanceof Error ? enqueueError.message : 'Queue enqueue failed';
+      logger.error('Webhook processing and queue enqueue both failed', {
         correlationId: input.correlationId,
         webhookEventId: event.id,
-        message: processMessage,
+        message: enqueueMessage,
       });
-    });
+    }
   }
 }

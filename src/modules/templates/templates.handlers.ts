@@ -12,6 +12,7 @@ import {
   enqueueOrganizationTemplateSync,
   getOrganizationTemplate,
   listOrganizationTemplates,
+  syncOrganizationTemplates,
   updateOrganizationTemplateForUser,
   updateOrganizationTemplateVariableNames,
 } from './templates.service';
@@ -54,13 +55,13 @@ export async function getTemplateHandler(req: Request, res: Response): Promise<v
 export async function syncTemplatesHandler(req: Request, res: Response): Promise<void> {
   const { userId, organizationId, correlationId } = requireJwtContext(req);
   const body = getValidated<SyncTemplatesInput>(req, 'body');
-  const result = await enqueueOrganizationTemplateSync(
+  const result = await syncOrganizationTemplates(
     organizationId,
     userId,
     body.whatsAppAccountId,
     correlationId,
   );
-  AppResponse.success(res, 'Template sync queued', result, undefined, 202);
+  AppResponse.success(res, 'Templates imported from Meta', result);
 }
 
 export async function createTemplateHandler(req: Request, res: Response): Promise<void> {

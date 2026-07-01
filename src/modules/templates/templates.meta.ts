@@ -1,5 +1,12 @@
 import type { MetaMessageTemplateComponent, MetaMessageTemplateNode } from '../../infrastructure/meta';
-import { normalizeTemplateMediaPublicUrl } from '../../infrastructure/storage/templateMediaStorage';
+import {
+  normalizeTemplateMediaPublicUrl,
+  resolveTemplateMediaUrlForClient,
+} from '../../infrastructure/storage/templateMediaStorage';
+import {
+  coerceMetaTemplateId,
+  normalizeStoredTemplateLanguage,
+} from './templateLanguage';
 import type { MetaTemplateStatus, TemplateCategory } from './templates.schemas';
 
 export type MappedMetaTemplate = {
@@ -108,6 +115,10 @@ export function mapMetaTemplateStatus(value: string | undefined): MetaTemplateSt
       return 'DISABLED';
     case 'DELETED':
       return 'DELETED';
+    case 'IN_APPEAL':
+      return 'PENDING';
+    case 'REINSTATED':
+      return 'APPROVED';
     default:
       return 'UNKNOWN';
   }
@@ -151,6 +162,128 @@ export function componentsEqual(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
+function readDialogMediaUrl(
+  example: unknown,
+  key: string,
+): string | undefined {
+  if (!isRecord(example) || typeof example[key] !== 'string') {
+    return undefined;
+  }
+  const trimmed = example[key].trim();
+  return trimmed || undefined;
+}
+
+function writeDialogMediaUrl(
+  example: unknown,
+  key: string,
+  mediaUrl: string,
+): Record<string, unknown> {
+  const base = isRecord(example) ? { ...example } : {};
+  base[key] = normalizeTemplateMediaPublicUrl(mediaUrl);
+  return base;
+}
+
+/**
+ * Meta sync replaces component JSON. Preserve Dialog-only MinIO preview URLs so
+ * template card images keep working after "Sync all".
+ */
+export function mergeDialogMediaUrlsIntoSyncedComponents(
+  incoming: unknown,
+  existing: unknown,
+): unknown {
+  if (!Array.isArray(incoming)) {
+    return incoming;
+  }
+
+  const existingComponents = Array.isArray(existing) ? existing : [];
+  const merged = JSON.parse(JSON.stringify(incoming)) as MetaMessageTemplateComponent[];
+
+  const incomingHeader = merged.find(
+    (component) =>
+      component.type === 'HEADER' &&
+      component.format &&
+      String(component.format).toUpperCase() !== 'TEXT',
+  );
+  const existingHeader = existingComponents.find(
+    (component) =>
+      typeof component === 'object' &&
+      component !== null &&
+      (component as MetaMessageTemplateComponent).type === 'HEADER' &&
+      (component as MetaMessageTemplateComponent).format &&
+      String((component as MetaMessageTemplateComponent).format).toUpperCase() !== 'TEXT',
+  ) as MetaMessageTemplateComponent | undefined;
+
+  if (incomingHeader && existingHeader) {
+    const preservedUrl = readDialogMediaUrl(
+      existingHeader.example,
+      DIALOG_HEADER_MEDIA_URL_KEY,
+    );
+    const incomingUrl = readDialogMediaUrl(
+      incomingHeader.example,
+      DIALOG_HEADER_MEDIA_URL_KEY,
+    );
+    if (preservedUrl && !incomingUrl) {
+      incomingHeader.example = writeDialogMediaUrl(
+        incomingHeader.example,
+        DIALOG_HEADER_MEDIA_URL_KEY,
+        preservedUrl,
+      );
+    }
+  }
+
+  const incomingCarousel = merged.find((component) => component.type === 'CAROUSEL') as
+    | { cards?: Array<{ components?: MetaMessageTemplateComponent[] }> }
+    | undefined;
+  const existingCarousel = existingComponents.find(
+    (component) =>
+      typeof component === 'object' &&
+      component !== null &&
+      (component as MetaMessageTemplateComponent).type === 'CAROUSEL',
+  ) as { cards?: Array<{ components?: MetaMessageTemplateComponent[] }> } | undefined;
+
+  incomingCarousel?.cards?.forEach((card, cardIndex) => {
+    const existingCard = existingCarousel?.cards?.[cardIndex];
+    if (!Array.isArray(card.components) || !Array.isArray(existingCard?.components)) {
+      return;
+    }
+
+    const incomingCardHeader = card.components.find(
+      (component) =>
+        component.type === 'HEADER' &&
+        component.format &&
+        String(component.format).toUpperCase() === 'IMAGE',
+    );
+    const existingCardHeader = existingCard.components.find(
+      (component) =>
+        component.type === 'HEADER' &&
+        component.format &&
+        String(component.format).toUpperCase() === 'IMAGE',
+    );
+
+    if (!incomingCardHeader || !existingCardHeader) {
+      return;
+    }
+
+    const preservedUrl = readDialogMediaUrl(
+      existingCardHeader.example,
+      DIALOG_CAROUSEL_IMAGE_MEDIA_URL_KEY,
+    );
+    const incomingUrl = readDialogMediaUrl(
+      incomingCardHeader.example,
+      DIALOG_CAROUSEL_IMAGE_MEDIA_URL_KEY,
+    );
+    if (preservedUrl && !incomingUrl) {
+      incomingCardHeader.example = writeDialogMediaUrl(
+        incomingCardHeader.example,
+        DIALOG_CAROUSEL_IMAGE_MEDIA_URL_KEY,
+        preservedUrl,
+      );
+    }
+  });
+
+  return merged;
+}
+
 export function mapMetaTemplateNode(
   node: MetaMessageTemplateNode,
   variableNames?: string[],
@@ -159,10 +292,10 @@ export function mapMetaTemplateNode(
   const metaStatus = mapMetaTemplateStatus(node.status);
 
   return {
-    metaTemplateId: node.id,
+    metaTemplateId: coerceMetaTemplateId(node.id) ?? String(node.id),
     metaTemplateName: node.name,
     category: mapMetaTemplateCategory(node.category),
-    language: node.language,
+    language: normalizeStoredTemplateLanguage(node.language),
     metaStatus,
     components,
     variableSchema: extractVariableSchema(components, variableNames),
@@ -390,6 +523,40 @@ export function parseTemplateComponents(components: unknown): TemplatePreviewDto
 
   preview.variables.sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
   return preview;
+}
+
+/** Normalizes MinIO URLs in preview DTOs for browser display. */
+export function resolveTemplatePreviewMediaUrlsForClient(
+  organizationId: string,
+  preview: TemplatePreviewDto,
+): TemplatePreviewDto {
+  const resolved: TemplatePreviewDto = {
+    ...preview,
+    ...(preview.headerMediaUrl
+      ? {
+          headerMediaUrl: resolveTemplateMediaUrlForClient(
+            organizationId,
+            preview.headerMediaUrl,
+          ),
+        }
+      : {}),
+  };
+
+  if (preview.carouselCards?.length) {
+    resolved.carouselCards = preview.carouselCards.map((card) => ({
+      ...card,
+      ...(card.imageMediaUrl
+        ? {
+            imageMediaUrl: resolveTemplateMediaUrlForClient(
+              organizationId,
+              card.imageMediaUrl,
+            ),
+          }
+        : {}),
+    }));
+  }
+
+  return resolved;
 }
 
 function collectPlaceholderKeysInOrder(...texts: string[]): string[] {

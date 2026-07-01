@@ -2,7 +2,17 @@ import { Prisma } from '@prisma/client';
 import { getPrismaClient } from '../../infrastructure/prisma/client';
 import { InternalServerError, NotFoundError } from '../../shared/errors/AppError';
 import { listConnectedWhatsAppAccountIds } from '../whatsapp/whatsapp.repository';
-import { extractVariableSchema, parseTemplateComponents } from './templates.meta';
+import {
+  languageLookupVariants,
+  normalizeStoredTemplateLanguage,
+  coerceMetaTemplateId,
+} from './templateLanguage';
+import {
+  extractVariableSchema,
+  mergeDialogMediaUrlsIntoSyncedComponents,
+  parseTemplateComponents,
+  resolveTemplatePreviewMediaUrlsForClient,
+} from './templates.meta';
 import type {
   MetaTemplateStatus,
   TemplateCategory,
@@ -79,8 +89,11 @@ function formatCreatedByName(
 }
 
 function toSummaryDto(row: TemplateRow): TemplateSummaryDto {
-  const preview = row.currentVersion?.components
+  const rawPreview = row.currentVersion?.components
     ? parseTemplateComponents(row.currentVersion.components)
+    : undefined;
+  const preview = rawPreview
+    ? resolveTemplatePreviewMediaUrlsForClient(row.organizationId, rawPreview)
     : undefined;
 
   return {
@@ -185,16 +198,76 @@ export async function findActiveTemplateForCreate(input: {
     throw new InternalServerError('Database not configured', 'DATABASE_NOT_CONFIGURED');
   }
 
+  const normalizedLanguage = normalizeStoredTemplateLanguage(input.language);
+  const languageVariants = languageLookupVariants(input.language);
+
   return prisma.template.findFirst({
     where: {
       organizationId: input.organizationId,
       metaTemplateName: input.metaTemplateName,
-      language: input.language,
       deletedAt: null,
+      OR: [
+        { language: normalizedLanguage },
+        ...languageVariants.map((language) => ({ language })),
+      ],
     },
+    orderBy: { updatedAt: 'desc' },
     select: {
       id: true,
       whatsAppAccountId: true,
+    },
+  });
+}
+
+async function findTemplateForMetaUpsert(input: {
+  organizationId: string;
+  whatsAppAccountId?: string;
+  metaTemplateId: string;
+  metaTemplateName: string;
+  language: string;
+}): Promise<{
+  id: string;
+  whatsAppAccountId: string | null;
+  currentVersion: { id: string; version: number; components: unknown } | null;
+} | null> {
+  const prisma = getPrismaClient();
+  if (!prisma) {
+    throw new InternalServerError('Database not configured', 'DATABASE_NOT_CONFIGURED');
+  }
+
+  const lookupFilters: Prisma.TemplateWhereInput[] = [{ metaTemplateId: coerceMetaTemplateId(input.metaTemplateId) ?? input.metaTemplateId }];
+
+  for (const language of languageLookupVariants(input.language)) {
+    lookupFilters.push({
+      metaTemplateName: input.metaTemplateName,
+      language,
+    });
+  }
+
+  if (input.whatsAppAccountId) {
+    lookupFilters.push({
+      metaTemplateName: input.metaTemplateName,
+      whatsAppAccountId: input.whatsAppAccountId,
+    });
+  }
+
+  return prisma.template.findFirst({
+    where: {
+      organizationId: input.organizationId,
+      deletedAt: null,
+      OR: lookupFilters,
+    },
+    orderBy: { updatedAt: 'desc' },
+    select: {
+      id: true,
+      whatsAppAccountId: true,
+      currentVersion: {
+        select: {
+          id: true,
+          version: true,
+          components: true,
+        },
+      },
     },
   });
 }
@@ -403,6 +476,8 @@ export type UpsertTemplateFromMetaInput = {
   components: unknown;
   variableSchema: unknown;
   rejectionReason: string | null;
+  /** When true (Meta pull/sync), do not overwrite approval status on existing templates — webhooks own status. */
+  preserveExistingStatus?: boolean;
 };
 
 export type UpsertTemplateFromMetaResult = {
@@ -417,37 +492,23 @@ export async function upsertTemplateFromMeta(
     throw new InternalServerError('Database not configured', 'DATABASE_NOT_CONFIGURED');
   }
 
-  const componentsJson = input.components as Prisma.InputJsonValue;
   const variableSchemaJson = input.variableSchema as Prisma.InputJsonValue;
   const now = new Date();
+  const normalizedLanguage = normalizeStoredTemplateLanguage(input.language);
+  const metaTemplateId = coerceMetaTemplateId(input.metaTemplateId) ?? input.metaTemplateId;
 
-  const existing = await prisma.template.findFirst({
-    where: {
-      organizationId: input.organizationId,
-      metaTemplateName: input.metaTemplateName,
-      language: input.language,
-      deletedAt: null,
-      ...(input.whatsAppAccountId
-        ? {
-            OR: [
-              { whatsAppAccountId: input.whatsAppAccountId },
-              { whatsAppAccountId: null },
-            ],
-          }
-        : {}),
-    },
-    select: {
-      id: true,
-      whatsAppAccountId: true,
-      currentVersion: {
-        select: {
-          id: true,
-          version: true,
-          components: true,
-        },
-      },
-    },
+  const existing = await findTemplateForMetaUpsert({
+    organizationId: input.organizationId,
+    whatsAppAccountId: input.whatsAppAccountId,
+    metaTemplateId,
+    metaTemplateName: input.metaTemplateName,
+    language: normalizedLanguage,
   });
+
+  const preserveStatus = Boolean(input.preserveExistingStatus && existing);
+  const mergedComponents = existing
+    ? mergeDialogMediaUrlsIntoSyncedComponents(input.components, existing.currentVersion?.components)
+    : input.components;
 
   if (!existing) {
     await prisma.$transaction(async (tx) => {
@@ -456,9 +517,9 @@ export async function upsertTemplateFromMeta(
           organizationId: input.organizationId,
           whatsAppAccountId: input.whatsAppAccountId,
           metaTemplateName: input.metaTemplateName,
-          metaTemplateId: input.metaTemplateId,
+          metaTemplateId,
           category: input.category,
-          language: input.language,
+          language: normalizedLanguage,
           metaStatus: input.metaStatus,
           createdById: input.userId,
           updatedById: input.userId,
@@ -469,7 +530,7 @@ export async function upsertTemplateFromMeta(
         data: {
           templateId: template.id,
           version: 1,
-          components: componentsJson,
+          components: mergedComponents as Prisma.InputJsonValue,
           variableSchema: variableSchemaJson,
           rejectionReason: input.rejectionReason,
           submittedAt: input.metaStatus === 'PENDING' ? now : null,
@@ -489,7 +550,7 @@ export async function upsertTemplateFromMeta(
 
   const currentComponents = existing.currentVersion?.components;
   const componentsChanged =
-    JSON.stringify(currentComponents) !== JSON.stringify(input.components);
+    JSON.stringify(currentComponents) !== JSON.stringify(mergedComponents);
 
   if (!componentsChanged) {
     await prisma.template.update({
@@ -498,14 +559,16 @@ export async function upsertTemplateFromMeta(
         ...(input.whatsAppAccountId && !existing.whatsAppAccountId
           ? { whatsAppAccountId: input.whatsAppAccountId }
           : {}),
-        metaTemplateId: input.metaTemplateId,
+        metaTemplateId,
+        metaTemplateName: input.metaTemplateName,
         category: input.category,
-        metaStatus: input.metaStatus,
+        language: normalizedLanguage,
+        ...(preserveStatus ? {} : { metaStatus: input.metaStatus }),
         updatedById: input.userId,
       },
     });
 
-    if (existing.currentVersion) {
+    if (existing.currentVersion && !preserveStatus) {
       await prisma.templateVersion.update({
         where: { id: existing.currentVersion.id },
         data: {
@@ -525,11 +588,11 @@ export async function upsertTemplateFromMeta(
       data: {
         templateId: existing.id,
         version: nextVersion,
-        components: componentsJson,
+        components: mergedComponents as Prisma.InputJsonValue,
         variableSchema: variableSchemaJson,
-        rejectionReason: input.rejectionReason,
-        submittedAt: input.metaStatus === 'PENDING' ? now : null,
-        approvedAt: input.metaStatus === 'APPROVED' ? now : null,
+        rejectionReason: preserveStatus ? null : input.rejectionReason,
+        submittedAt: preserveStatus ? null : input.metaStatus === 'PENDING' ? now : null,
+        approvedAt: preserveStatus ? null : input.metaStatus === 'APPROVED' ? now : null,
         createdById: input.userId,
       },
     });
@@ -540,9 +603,11 @@ export async function upsertTemplateFromMeta(
         ...(input.whatsAppAccountId && !existing.whatsAppAccountId
           ? { whatsAppAccountId: input.whatsAppAccountId }
           : {}),
-        metaTemplateId: input.metaTemplateId,
+        metaTemplateId,
+        metaTemplateName: input.metaTemplateName,
         category: input.category,
-        metaStatus: input.metaStatus,
+        language: normalizedLanguage,
+        ...(preserveStatus ? {} : { metaStatus: input.metaStatus }),
         currentVersionId: version.id,
         updatedById: input.userId,
       },
@@ -566,15 +631,31 @@ export async function updateTemplateStatusFromWebhook(input: {
     throw new InternalServerError('Database not configured', 'DATABASE_NOT_CONFIGURED');
   }
 
-  const lookupFilters = [
-    ...(input.metaTemplateId ? [{ metaTemplateId: input.metaTemplateId }] : []),
-    ...(input.metaTemplateName && input.language
-      ? [{ metaTemplateName: input.metaTemplateName, language: input.language }]
-      : []),
-    ...(input.metaTemplateName && !input.language
-      ? [{ metaTemplateName: input.metaTemplateName }]
-      : []),
-  ];
+  const metaTemplateId = input.metaTemplateId
+    ? coerceMetaTemplateId(input.metaTemplateId) ?? input.metaTemplateId
+    : undefined;
+
+  const lookupFilters: Prisma.TemplateWhereInput[] = [];
+
+  if (metaTemplateId) {
+    lookupFilters.push({ metaTemplateId });
+  }
+
+  if (input.metaTemplateName) {
+    const languageVariants = languageLookupVariants(
+      input.language ? normalizeStoredTemplateLanguage(input.language) : input.language,
+    );
+    if (languageVariants.length > 0) {
+      for (const language of languageVariants) {
+        lookupFilters.push({
+          metaTemplateName: input.metaTemplateName,
+          language,
+        });
+      }
+    } else {
+      lookupFilters.push({ metaTemplateName: input.metaTemplateName });
+    }
+  }
 
   if (lookupFilters.length === 0) {
     return false;
@@ -586,6 +667,7 @@ export async function updateTemplateStatusFromWebhook(input: {
       deletedAt: null,
       OR: lookupFilters,
     },
+    orderBy: { updatedAt: 'desc' },
     select: {
       id: true,
       currentVersionId: true,
@@ -607,7 +689,7 @@ export async function updateTemplateStatusFromWebhook(input: {
         ...(input.rawWebhookPayload
           ? { rawWebhookPayload: input.rawWebhookPayload as Prisma.InputJsonValue }
           : {}),
-        ...(input.metaTemplateId ? { metaTemplateId: input.metaTemplateId } : {}),
+        ...(metaTemplateId ? { metaTemplateId } : {}),
       },
     });
 
@@ -715,13 +797,16 @@ export async function requireTemplateByName(
     throw new InternalServerError('Database not configured', 'DATABASE_NOT_CONFIGURED');
   }
 
+  const languageVariants = languageLookupVariants(language);
+
   const row = await prisma.template.findFirst({
     where: {
       organizationId,
       metaTemplateName,
-      language,
       deletedAt: null,
+      OR: languageVariants.map((variant) => ({ language: variant })),
     },
+    orderBy: { updatedAt: 'desc' },
     select: templateSummarySelect,
   });
 
