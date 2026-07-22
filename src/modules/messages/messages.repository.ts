@@ -188,6 +188,7 @@ export async function findMessageSendContext(messageId: string): Promise<Message
       recipientPhone: true,
       metaTemplateName: true,
       components: true,
+      templateVersionId: true,
       templateVersion: {
         select: {
           template: {
@@ -216,11 +217,27 @@ export async function findMessageSendContext(messageId: string): Promise<Message
     recipientPhone: row.recipientPhone,
     metaTemplateName: row.metaTemplateName,
     language: row.templateVersion?.template.language ?? 'en',
+    templateVersionId: row.templateVersionId ?? null,
     metaComponents: (row.components ?? []) as MetaSendTemplateComponent[],
     metaPhoneNumberId: row.phoneNumber.metaPhoneNumberId,
     whatsAppAccountId: row.phoneNumber.whatsAppAccountId,
     qualityRating: row.phoneNumber.qualityRating,
   };
+}
+
+export async function updateMessageComponents(
+  messageId: string,
+  components: MetaSendTemplateComponent[],
+): Promise<void> {
+  const prisma = getPrismaClient();
+  if (!prisma) {
+    throw new InternalServerError('Database not configured', 'DATABASE_NOT_CONFIGURED');
+  }
+
+  await prisma.message.update({
+    where: { id: messageId },
+    data: { components: components as Prisma.InputJsonValue },
+  });
 }
 
 export async function requireMessageSendContext(messageId: string): Promise<MessageSendContextDto> {

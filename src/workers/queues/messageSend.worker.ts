@@ -1,6 +1,6 @@
 import { Worker } from 'bullmq';
 import type { MessageSendJobData } from '../../modules/messages/messages.schemas';
-import { getQueueConnection, isQueueInfrastructureConfigured } from '../../infrastructure/queues/connection';
+import { getQueueWorkerOptions, isQueueInfrastructureConfigured } from '../../infrastructure/queues/connection';
 import { QUEUE_NAMES } from '../../infrastructure/queues/registry';
 import logger from '../../infrastructure/logging/logger';
 import { processMessageSendJob } from '../processors/messageSend.processor';
@@ -16,8 +16,8 @@ export function startMessageSendWorker(): void {
     QUEUE_NAMES.MESSAGE_SEND,
     async (job) => processMessageSendJob(job),
     {
-      connection: getQueueConnection(),
-      concurrency: 3,
+      ...getQueueWorkerOptions(),
+      concurrency: 2,
     },
   );
 

@@ -57,6 +57,7 @@ export async function sendOrganizationTemplateMessage(input: {
   const metaComponents = buildTemplateComponentsFromVariables(
     template.variableSchema,
     input.body.variables,
+    template.components,
   );
 
   const staged = await stageOutboundTemplateMessage({

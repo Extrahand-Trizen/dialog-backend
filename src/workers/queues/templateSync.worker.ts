@@ -1,6 +1,6 @@
 import { Worker } from 'bullmq';
 import type { TemplateSyncJobData } from '../../modules/templates/templates.schemas';
-import { getQueueConnection, isQueueInfrastructureConfigured } from '../../infrastructure/queues/connection';
+import { getQueueWorkerOptions, isQueueInfrastructureConfigured } from '../../infrastructure/queues/connection';
 import { QUEUE_NAMES } from '../../infrastructure/queues/registry';
 import logger from '../../infrastructure/logging/logger';
 import { processTemplateSyncJob } from '../processors/templateSync.processor';
@@ -16,7 +16,7 @@ export function startTemplateSyncWorker(): void {
     QUEUE_NAMES.TEMPLATE_SYNC,
     async (job) => processTemplateSyncJob(job),
     {
-      connection: getQueueConnection(),
+      ...getQueueWorkerOptions(),
       concurrency: 2,
     },
   );

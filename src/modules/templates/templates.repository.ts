@@ -719,6 +719,7 @@ export type ApprovedTemplateSendContext = {
   metaTemplateName: string;
   language: string;
   variableSchema: unknown;
+  components: unknown;
 };
 
 export async function findApprovedTemplateForSend(input: {
@@ -747,6 +748,7 @@ export async function findApprovedTemplateForSend(input: {
         select: {
           id: true,
           variableSchema: true,
+          components: true,
         },
       },
     },
@@ -761,6 +763,7 @@ export async function findApprovedTemplateForSend(input: {
     metaTemplateName: template.metaTemplateName,
     language: template.language,
     variableSchema: template.currentVersion.variableSchema,
+    components: template.currentVersion.components,
   };
 }
 

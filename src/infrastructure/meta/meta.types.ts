@@ -79,10 +79,19 @@ export type MetaMessageTemplatesListResponse = {
   };
 };
 
-export type MetaSendTemplateParameter = {
+export type MetaSendTemplateTextParameter = {
   type: 'text';
   text: string;
 };
+
+export type MetaSendTemplateMediaParameter =
+  | { type: 'image'; image: { link: string } | { id: string } }
+  | { type: 'video'; video: { link: string } | { id: string } }
+  | { type: 'document'; document: { link: string; filename?: string } | { id: string } };
+
+export type MetaSendTemplateParameter =
+  | MetaSendTemplateTextParameter
+  | MetaSendTemplateMediaParameter;
 
 export type MetaSendTemplateComponent = {
   type: 'body' | 'header' | 'button';

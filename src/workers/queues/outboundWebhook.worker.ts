@@ -1,6 +1,6 @@
 import { Worker } from 'bullmq';
 import type { OutboundWebhookJobData } from '../../modules/outboundWebhooks/outboundWebhooks.schemas';
-import { getQueueConnection, isQueueInfrastructureConfigured } from '../../infrastructure/queues/connection';
+import { getQueueWorkerOptions, isQueueInfrastructureConfigured } from '../../infrastructure/queues/connection';
 import { QUEUE_NAMES } from '../../infrastructure/queues/registry';
 import logger from '../../infrastructure/logging/logger';
 import { processOutboundWebhookJob } from '../processors/outboundWebhook.processor';
@@ -16,7 +16,7 @@ export function startOutboundWebhookWorker(): void {
     QUEUE_NAMES.OUTBOUND_WEBHOOK,
     async (job) => processOutboundWebhookJob(job),
     {
-      connection: getQueueConnection(),
+      ...getQueueWorkerOptions(),
       concurrency: 5,
     },
   );

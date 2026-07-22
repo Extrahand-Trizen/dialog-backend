@@ -97,6 +97,7 @@ export type MessageSendContextDto = {
   recipientPhone: string;
   metaTemplateName: string;
   language: string;
+  templateVersionId: string | null;
   metaComponents: MetaSendTemplateComponent[];
   metaPhoneNumberId: string;
   whatsAppAccountId: string;

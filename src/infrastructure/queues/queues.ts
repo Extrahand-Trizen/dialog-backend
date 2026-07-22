@@ -4,7 +4,7 @@ import type { MessageSendJobData } from '../../modules/messages/messages.schemas
 import type { NotificationTriggerJobData } from '../../modules/notifications/notifications.schemas';
 import type { OutboundWebhookJobData } from '../../modules/outboundWebhooks/outboundWebhooks.schemas';
 import type { TemplateSyncJobData } from '../../modules/templates/templates.schemas';
-import { getQueueConnection, isQueueInfrastructureConfigured } from './connection';
+import { getQueueWorkerOptions, isQueueInfrastructureConfigured } from './connection';
 import { buildJobId } from './jobId';
 import { DEFAULT_JOB_OPTIONS, MESSAGE_SEND_JOB_OPTIONS, QUEUE_NAMES } from './registry';
 
@@ -26,7 +26,7 @@ export function getWebhookIngestQueue(): Queue<WebhookIngestJobData> | null {
 
   if (!webhookIngestQueue) {
     webhookIngestQueue = new Queue<WebhookIngestJobData>(QUEUE_NAMES.WEBHOOK_INGEST, {
-      connection: getQueueConnection(),
+      ...getQueueWorkerOptions(),
     });
   }
 
@@ -52,7 +52,7 @@ export function getTemplateSyncQueue(): Queue<TemplateSyncJobData> | null {
 
   if (!templateSyncQueue) {
     templateSyncQueue = new Queue<TemplateSyncJobData>(QUEUE_NAMES.TEMPLATE_SYNC, {
-      connection: getQueueConnection(),
+      ...getQueueWorkerOptions(),
     });
   }
 
@@ -80,7 +80,7 @@ export function getNotificationTriggerQueue(): Queue<NotificationTriggerJobData>
     notificationTriggerQueue = new Queue<NotificationTriggerJobData>(
       QUEUE_NAMES.NOTIFICATION_TRIGGER,
       {
-        connection: getQueueConnection(),
+        ...getQueueWorkerOptions(),
       },
     );
   }
@@ -112,7 +112,7 @@ export function getMessageSendQueue(): Queue<MessageSendJobData> | null {
 
   if (!messageSendQueue) {
     messageSendQueue = new Queue<MessageSendJobData>(QUEUE_NAMES.MESSAGE_SEND, {
-      connection: getQueueConnection(),
+      ...getQueueWorkerOptions(),
     });
   }
 
@@ -138,7 +138,7 @@ export function getOutboundWebhookQueue(): Queue<OutboundWebhookJobData> | null 
 
   if (!outboundWebhookQueue) {
     outboundWebhookQueue = new Queue<OutboundWebhookJobData>(QUEUE_NAMES.OUTBOUND_WEBHOOK, {
-      connection: getQueueConnection(),
+      ...getQueueWorkerOptions(),
     });
   }
 

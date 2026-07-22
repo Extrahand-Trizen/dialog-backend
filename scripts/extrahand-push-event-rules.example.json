@@ -1,0 +1,87 @@
+[
+  {
+    "eventKey": "CUSTOMER_WELCOME",
+    "suggestedTemplate": "extrahand_customer_welcome",
+    "variableMapping": { "1": "userName" }
+  },
+  {
+    "eventKey": "HELPER_WELCOME",
+    "suggestedTemplate": "extrahand_helper_welcome",
+    "variableMapping": { "1": "userName" }
+  },
+  {
+    "eventKey": "APPLICATION_ACCEPTED",
+    "suggestedTemplate": "extrahand_work_assigned",
+    "variableMapping": { "1": "taskTitle" }
+  },
+  {
+    "eventKey": "APPLICATION_SUBMITTED",
+    "suggestedTemplate": "extrahand_offer_received",
+    "variableMapping": { "1": "applicantName", "2": "taskTitle" }
+  },
+  {
+    "eventKey": "APPLICATION_REJECTED",
+    "suggestedTemplate": "(missing — create Meta template)",
+    "variableMapping": { "1": "taskTitle" }
+  },
+  {
+    "eventKey": "TASK_COMPLETED",
+    "suggestedTemplate": "extrahand_work_completed_customer",
+    "variableMapping": { "1": "taskTitle" }
+  },
+  {
+    "eventKey": "TASK_COMPLETED_TASKER",
+    "suggestedTemplate": "extrahand_work_completed_helper",
+    "variableMapping": { "1": "taskTitle" }
+  },
+  {
+    "eventKey": "TASK_REMINDER_24H",
+    "suggestedTemplate": "extrahand_work_reminder",
+    "variableMapping": { "1": "taskTitle", "2": "scheduledLabel" }
+  },
+  {
+    "eventKey": "TASK_NEARBY",
+    "suggestedTemplate": "extrahand_nearby_work_skill_match",
+    "variableMapping": { "1": "taskTitle", "2": "categoryLabel", "3": "locationLabel" }
+  },
+  {
+    "eventKey": "TASK_CREATED_RECOMMENDED",
+    "suggestedTemplate": "extrahand_nearby_work_skill_match",
+    "variableMapping": { "1": "taskTitle", "2": "categoryLabel", "3": "locationLabel" }
+  },
+  {
+    "eventKey": "TASK_CREATED_KEYWORD",
+    "suggestedTemplate": "extrahand_nearby_work_skill_match",
+    "variableMapping": { "1": "taskTitle", "2": "categoryLabel", "3": "locationLabel" }
+  },
+  {
+    "eventKey": "TASK_UPDATED",
+    "suggestedTemplate": "(missing — create Meta template)",
+    "variableMapping": { "1": "taskTitle", "2": "body" }
+  },
+  {
+    "eventKey": "HELPER_ON_THE_WAY",
+    "suggestedTemplate": "extrahand_work_starting_soon",
+    "variableMapping": { "1": "taskTitle", "2": "scheduledLabel" }
+  },
+  {
+    "eventKey": "REVIEW_REQUEST",
+    "suggestedTemplate": "(missing — create Meta template)",
+    "variableMapping": { "1": "taskTitle" }
+  },
+  {
+    "eventKey": "TASK_BUDGET_REVISED",
+    "suggestedTemplate": "(missing — create Meta template)",
+    "variableMapping": { "1": "taskTitle", "2": "body" }
+  },
+  {
+    "eventKey": "TASK_CANCELLED_CUSTOMER",
+    "suggestedTemplate": "extrahand_work_cancelled_customer",
+    "variableMapping": { "1": "taskTitle" }
+  },
+  {
+    "eventKey": "TASK_CANCELLED_HELPER",
+    "suggestedTemplate": "extrahand_work_cancelled_helper",
+    "variableMapping": { "1": "taskTitle" }
+  }
+]

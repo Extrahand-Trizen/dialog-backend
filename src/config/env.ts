@@ -17,6 +17,12 @@ const envSchema = z.object({
     .optional()
     .transform((value) => value === 'true' || value === '1'),
   REDIS_URL: z.string().min(1).optional(),
+  /**
+   * BullMQ key prefix — REQUIRED for local/dev when REDIS_URL points at a shared
+   * Redis also used by deployed dialog-backend. Without isolation, remote workers
+   * steal jobs and send body-only templates (Meta #132012).
+   */
+  BULLMQ_PREFIX: z.string().min(1).optional(),
 
   JWT_SECRET: z.string().min(16).optional(),
   JWT_EXPIRES_IN: z.string().default('7d'),

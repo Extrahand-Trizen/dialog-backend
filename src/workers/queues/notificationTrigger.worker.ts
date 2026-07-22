@@ -1,6 +1,6 @@
 import { Worker } from 'bullmq';
 import type { NotificationTriggerJobData } from '../../modules/notifications/notifications.schemas';
-import { getQueueConnection, isQueueInfrastructureConfigured } from '../../infrastructure/queues/connection';
+import { getQueueWorkerOptions, isQueueInfrastructureConfigured } from '../../infrastructure/queues/connection';
 import { QUEUE_NAMES } from '../../infrastructure/queues/registry';
 import logger from '../../infrastructure/logging/logger';
 import { processNotificationTriggerJob } from '../processors/notificationTrigger.processor';
@@ -16,7 +16,7 @@ export function startNotificationTriggerWorker(): void {
     QUEUE_NAMES.NOTIFICATION_TRIGGER,
     async (job) => processNotificationTriggerJob(job),
     {
-      connection: getQueueConnection(),
+      ...getQueueWorkerOptions(),
       concurrency: 5,
     },
   );

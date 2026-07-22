@@ -1,6 +1,6 @@
 import { Worker } from 'bullmq';
 import type { WebhookIngestJobData } from '../../modules/webhooks/webhooks.schemas';
-import { getQueueConnection, isQueueInfrastructureConfigured } from '../../infrastructure/queues/connection';
+import { getQueueWorkerOptions, isQueueInfrastructureConfigured } from '../../infrastructure/queues/connection';
 import { QUEUE_NAMES } from '../../infrastructure/queues/registry';
 import logger from '../../infrastructure/logging/logger';
 import { processWebhookIngestJob } from '../processors/webhookIngest.processor';
@@ -16,7 +16,7 @@ export function startWebhookIngestWorker(): void {
     QUEUE_NAMES.WEBHOOK_INGEST,
     async (job) => processWebhookIngestJob(job),
     {
-      connection: getQueueConnection(),
+      ...getQueueWorkerOptions(),
       concurrency: 5,
     },
   );

@@ -1,6 +1,11 @@
 import logger from '../../infrastructure/logging/logger';
 import { ValidationError } from '../../shared/errors/AppError';
-import { buildTemplateComponentsFromMapping } from '../messages/messages.meta';
+import {
+  buildTemplateComponentsFromMapping,
+  coerceTemplateComponentsArray,
+  outboundHasMediaHeader,
+  templateRequiresMediaHeader,
+} from '../messages/messages.meta';
 import {
   enqueueStagedMessageSend,
   stageOutboundTemplateMessage,
@@ -95,7 +100,26 @@ export async function processEventIngest(
 
     let metaComponents;
     try {
-      metaComponents = buildTemplateComponentsFromMapping(rule.variableMapping, event.payload);
+      metaComponents = buildTemplateComponentsFromMapping(
+        rule.variableMapping,
+        event.payload,
+        template.components,
+      );
+
+      // Fail fast if IMAGE/VIDEO/DOCUMENT header is required but missing from staged payload.
+      // Use coerce so string-json components still count (avoids body-only staging → Meta #132012).
+      if (
+        templateRequiresMediaHeader(template.components) &&
+        !outboundHasMediaHeader(metaComponents)
+      ) {
+        throw new ValidationError(
+          'Template requires a media header parameter but none was built — check header_media_url on the template',
+          {
+            componentCount: coerceTemplateComponentsArray(template.components)?.length ?? 0,
+            stagedTypes: metaComponents.map((component) => component.type),
+          },
+        );
+      }
     } catch (error) {
       const message =
         error instanceof ValidationError ? error.message : 'Variable mapping failed';
