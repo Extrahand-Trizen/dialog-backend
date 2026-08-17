@@ -8,6 +8,10 @@ import {
 } from './templates.repository';
 import type { TemplateVersionSendContext } from './templates.repository';
 import type {
+  CopyTemplatesInput,
+  CopyTemplatesResultDto,
+  DeleteTemplatesInput,
+  DeleteTemplatesResultDto,
   EnqueueTemplateSyncResultDto,
   ListTemplatesQuery,
   TemplateDetailDto,
@@ -15,10 +19,12 @@ import type {
   TemplateSyncResultDto,
   UpdateTemplateVariableNamesInput,
   UpdateTemplateInput,
+  CreateTemplateInput,
 } from './templates.schemas';
+import { copyOrganizationTemplates } from './templates.copy.service';
+import { deleteOrganizationTemplates } from './templates.delete.service';
 import { createOrganizationTemplate } from './templates.create.service';
 import { syncTemplatesForAccount } from './template.orchestrator';
-import type { CreateTemplateInput } from './templates.schemas';
 import { updateOrganizationTemplate } from './templates.update.service';
 
 export async function listOrganizationTemplates(
@@ -32,6 +38,7 @@ export async function listOrganizationTemplates(
     metaStatus: query.metaStatus,
     category: query.category,
     search: query.search,
+    whatsAppAccountId: query.whatsAppAccountId,
   });
 
   return {
@@ -105,6 +112,22 @@ export async function createOrganizationTemplateForUser(
   input: CreateTemplateInput,
 ): Promise<TemplateDetailDto> {
   return createOrganizationTemplate(organizationId, userId, input);
+}
+
+export async function copyOrganizationTemplatesForUser(
+  organizationId: string,
+  userId: string,
+  input: CopyTemplatesInput,
+): Promise<CopyTemplatesResultDto> {
+  return copyOrganizationTemplates(organizationId, userId, input);
+}
+
+export async function deleteOrganizationTemplatesForUser(
+  organizationId: string,
+  userId: string,
+  input: DeleteTemplatesInput,
+): Promise<DeleteTemplatesResultDto> {
+  return deleteOrganizationTemplates(organizationId, userId, input);
 }
 
 export async function updateOrganizationTemplateForUser(

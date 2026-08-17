@@ -140,3 +140,7 @@ export type MetaCreateMessageTemplateResponse = {
   status: string;
   category: string;
 };
+
+export type MetaDeleteMessageTemplateResponse = {
+  success: boolean;
+};

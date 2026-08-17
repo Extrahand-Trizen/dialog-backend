@@ -1,14 +1,19 @@
 import { Request, Response } from 'express';
 import { AppResponse } from '../../shared/responses/AppResponse';
 import { getValidated } from '../../middleware/validate';
-import type { ListTemplatesQuery, SyncTemplatesInput } from './templates.schemas';
 import type {
+  CopyTemplatesInput,
   CreateTemplateInput,
+  DeleteTemplatesInput,
+  ListTemplatesQuery,
+  SyncTemplatesInput,
   UpdateTemplateVariableNamesInput,
   UpdateTemplateInput,
 } from './templates.schemas';
 import {
+  copyOrganizationTemplatesForUser,
   createOrganizationTemplateForUser,
+  deleteOrganizationTemplatesForUser,
   enqueueOrganizationTemplateSync,
   getOrganizationTemplate,
   listOrganizationTemplates,
@@ -69,6 +74,20 @@ export async function createTemplateHandler(req: Request, res: Response): Promis
   const body = getValidated<CreateTemplateInput>(req, 'body');
   const template = await createOrganizationTemplateForUser(organizationId, userId, body);
   AppResponse.success(res, 'Template submitted to Meta for approval', template, undefined, 201);
+}
+
+export async function copyTemplatesHandler(req: Request, res: Response): Promise<void> {
+  const { userId, organizationId } = requireJwtContext(req);
+  const body = getValidated<CopyTemplatesInput>(req, 'body');
+  const result = await copyOrganizationTemplatesForUser(organizationId, userId, body);
+  AppResponse.success(res, 'Templates copied to destination WABA', result);
+}
+
+export async function deleteTemplatesHandler(req: Request, res: Response): Promise<void> {
+  const { userId, organizationId } = requireJwtContext(req);
+  const body = getValidated<DeleteTemplatesInput>(req, 'body');
+  const result = await deleteOrganizationTemplatesForUser(organizationId, userId, body);
+  AppResponse.success(res, 'Templates deleted', result);
 }
 
 export async function updateTemplateHandler(req: Request, res: Response): Promise<void> {

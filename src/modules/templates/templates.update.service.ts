@@ -84,6 +84,7 @@ export async function updateOrganizationTemplate(
     await upsertTemplateFromMeta({
       organizationId,
       userId,
+      whatsAppAccountId: input.whatsAppAccountId,
       metaTemplateId: metaResponse.id,
       metaTemplateName: existing.metaTemplateName,
       category: existing.category,

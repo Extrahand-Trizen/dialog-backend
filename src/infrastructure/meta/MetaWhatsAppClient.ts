@@ -3,6 +3,7 @@ import { MetaApiError } from '../../shared/errors/sendErrors';
 import type {
   MetaCreateMessageTemplateRequest,
   MetaCreateMessageTemplateResponse,
+  MetaDeleteMessageTemplateResponse,
   MetaUpdateMessageTemplateRequest,
   MetaUpdateMessageTemplateResponse,
   MetaGraphErrorBody,
@@ -44,7 +45,8 @@ export class MetaWhatsAppClient {
       },
     });
 
-    const body = (await response.json()) as T & MetaGraphErrorBody;
+    const text = await response.text();
+    const body = (text ? (JSON.parse(text) as T & MetaGraphErrorBody) : ({} as T & MetaGraphErrorBody));
 
     if (!response.ok) {
       const graphError = body.error;
@@ -129,6 +131,23 @@ export class MetaWhatsAppClient {
         method: 'POST',
         body: JSON.stringify(body),
       },
+    );
+  }
+
+  async deleteMessageTemplate(
+    metaWabaId: string,
+    accessToken: string,
+    input: { name: string; hsmId?: string | null },
+  ): Promise<MetaDeleteMessageTemplateResponse> {
+    const params = new URLSearchParams({ name: input.name });
+    if (input.hsmId?.trim()) {
+      params.set('hsm_id', input.hsmId.trim());
+    }
+
+    return this.request<MetaDeleteMessageTemplateResponse>(
+      `/${metaWabaId}/message_templates?${params.toString()}`,
+      accessToken,
+      { method: 'DELETE' },
     );
   }
 
