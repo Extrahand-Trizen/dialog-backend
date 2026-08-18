@@ -30,19 +30,6 @@ export async function sendOrganizationTemplateMessage(input: {
     };
   }
 
-  const template = await findApprovedTemplateForSend({
-    organizationId: input.organizationId,
-    metaTemplateName: input.body.template,
-    language: input.body.language,
-  });
-
-  if (!template) {
-    throw new ValidationError('Template not found or not approved for send', {
-      template: input.body.template,
-      language: input.body.language,
-    });
-  }
-
   const phone = await resolvePhoneForNotification(
     input.organizationId,
     input.body.phoneNumberId,
@@ -51,6 +38,23 @@ export async function sendOrganizationTemplateMessage(input: {
   if (!phone) {
     throw new ValidationError('No WhatsApp phone number configured for send', {
       phoneNumberId: input.body.phoneNumberId ?? null,
+    });
+  }
+
+  // Bind template to the same WABA as the sender phone (avoids multi-WABA mixups).
+  const template = await findApprovedTemplateForSend({
+    organizationId: input.organizationId,
+    metaTemplateName: input.body.template,
+    language: input.body.language,
+    whatsAppAccountId: phone.whatsAppAccountId,
+  });
+
+  if (!template) {
+    throw new ValidationError('Template not found or not approved for send', {
+      template: input.body.template,
+      language: input.body.language,
+      whatsAppAccountId: phone.whatsAppAccountId,
+      phoneNumberId: phone.id,
     });
   }
 

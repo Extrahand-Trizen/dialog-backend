@@ -726,6 +726,7 @@ export async function findApprovedTemplateForSend(input: {
   organizationId: string;
   metaTemplateName: string;
   language: string;
+  whatsAppAccountId?: string;
 }): Promise<ApprovedTemplateSendContext | null> {
   const prisma = getPrismaClient();
   if (!prisma) {
@@ -739,7 +740,11 @@ export async function findApprovedTemplateForSend(input: {
       language: input.language,
       deletedAt: null,
       metaStatus: 'APPROVED',
+      ...(input.whatsAppAccountId
+        ? { whatsAppAccountId: input.whatsAppAccountId }
+        : {}),
     },
+    orderBy: { updatedAt: 'desc' },
     select: {
       metaTemplateName: true,
       language: true,

@@ -411,11 +411,14 @@ export async function findDefaultPhoneForOrganization(
     throw new InternalServerError('Database not configured', 'DATABASE_NOT_CONFIGURED');
   }
 
+  // Prefer ACTIVE default numbers first so multi-WABA orgs don't pick a stale default.
   const defaultPhone = await prisma.phoneNumber.findFirst({
     where: {
       isDefault: true,
-      whatsAppAccount: { organizationId, status: { not: 'DISCONNECTED' } },
+      status: 'ACTIVE',
+      whatsAppAccount: { organizationId, status: 'ACTIVE' },
     },
+    orderBy: [{ updatedAt: 'desc' }, { createdAt: 'asc' }],
     select: phoneSelect,
   });
 
@@ -423,9 +426,25 @@ export async function findDefaultPhoneForOrganization(
     return toPhoneDto(defaultPhone);
   }
 
+  const anyDefault = await prisma.phoneNumber.findFirst({
+    where: {
+      isDefault: true,
+      whatsAppAccount: { organizationId, status: { not: 'DISCONNECTED' } },
+    },
+    orderBy: [{ updatedAt: 'desc' }, { createdAt: 'asc' }],
+    select: phoneSelect,
+  });
+
+  if (anyDefault) {
+    return toPhoneDto(anyDefault);
+  }
+
   const fallback = await prisma.phoneNumber.findFirst({
-    where: { whatsAppAccount: { organizationId, status: { not: 'DISCONNECTED' } } },
-    orderBy: { createdAt: 'asc' },
+    where: {
+      status: 'ACTIVE',
+      whatsAppAccount: { organizationId, status: 'ACTIVE' },
+    },
+    orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }, { createdAt: 'asc' }],
     select: phoneSelect,
   });
 
