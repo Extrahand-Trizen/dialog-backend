@@ -50,6 +50,7 @@ export async function createOrganizationTemplate(
 
   const existing = await findActiveTemplateForCreate({
     organizationId,
+    whatsAppAccountId: input.whatsAppAccountId,
     metaTemplateName: input.name,
     language: normalizedLanguage,
   });
@@ -57,7 +58,7 @@ export async function createOrganizationTemplate(
     const replaceable = await isTemplateReplaceableForCreate(organizationId, existing);
     if (!replaceable) {
       throw new ConflictError(
-        'Template already exists for this name and language on a connected WhatsApp account',
+        'Template already exists for this name and language on this WhatsApp account',
         'TEMPLATE_ALREADY_EXISTS',
       );
     }
@@ -130,5 +131,5 @@ export async function createOrganizationTemplate(
     throw new ValidationError(message, { name: input.name });
   }
 
-  return requireTemplateByName(organizationId, input.name, normalizedLanguage);
+  return requireTemplateByName(organizationId, input.name, normalizedLanguage, input.whatsAppAccountId);
 }

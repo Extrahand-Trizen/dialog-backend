@@ -3,9 +3,11 @@ import { asyncHandler } from '../../middleware/errorHandler';
 import { jwtAuth } from '../../middleware/jwtAuth';
 import { requireAdmin } from '../../middleware/requireRole';
 import { validate } from '../../middleware/validate';
-import { listTemplatesQuerySchema, syncTemplatesSchema, createTemplateSchema, updateTemplateSchema, updateTemplateVariableNamesSchema } from './templates.schemas';
+import { listTemplatesQuerySchema, syncTemplatesSchema, copyTemplatesSchema, deleteTemplatesSchema, createTemplateSchema, updateTemplateSchema, updateTemplateVariableNamesSchema } from './templates.schemas';
 import {
+  copyTemplatesHandler,
   createTemplateHandler,
+  deleteTemplatesHandler,
   getTemplateHandler,
   listTemplatesHandler,
   syncTemplatesHandler,
@@ -30,6 +32,18 @@ export function createTemplatesRouter(): Router {
     requireAdmin,
     validate(syncTemplatesSchema),
     asyncHandler(syncTemplatesHandler),
+  );
+  router.post(
+    '/copy',
+    requireAdmin,
+    validate(copyTemplatesSchema),
+    asyncHandler(copyTemplatesHandler),
+  );
+  router.post(
+    '/delete',
+    requireAdmin,
+    validate(deleteTemplatesSchema),
+    asyncHandler(deleteTemplatesHandler),
   );
   router.patch(
     '/:id',

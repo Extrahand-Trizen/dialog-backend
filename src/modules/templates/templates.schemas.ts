@@ -21,6 +21,7 @@ export const listTemplatesQuerySchema = z.object({
   metaStatus: z.enum(META_TEMPLATE_STATUSES).optional(),
   category: z.enum(TEMPLATE_CATEGORIES).optional(),
   search: z.string().trim().min(1).max(200).optional(),
+  whatsAppAccountId: z.string().uuid().optional(),
 });
 
 export type ListTemplatesQuery = z.infer<typeof listTemplatesQuerySchema>;
@@ -30,6 +31,70 @@ export const syncTemplatesSchema = z.object({
 });
 
 export type SyncTemplatesInput = z.infer<typeof syncTemplatesSchema>;
+
+export const copyTemplatesSchema = z
+  .object({
+    sourceWhatsAppAccountId: z.string().uuid(),
+    targetWhatsAppAccountId: z.string().uuid(),
+    templateIds: z.array(z.string().uuid()).min(1).max(100).optional(),
+    copyAll: z.boolean().optional(),
+  })
+  .superRefine((values, ctx) => {
+    if (values.sourceWhatsAppAccountId === values.targetWhatsAppAccountId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Choose a different destination WhatsApp account',
+        path: ['targetWhatsAppAccountId'],
+      });
+    }
+    if (!values.copyAll && (!values.templateIds || values.templateIds.length === 0)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Select at least one template, or copy all templates on this WABA',
+        path: ['templateIds'],
+      });
+    }
+  });
+
+export type CopyTemplatesInput = z.infer<typeof copyTemplatesSchema>;
+
+export type CopyTemplateItemResultDto = {
+  templateId: string;
+  name: string;
+  status: 'copied' | 'skipped' | 'failed';
+  message?: string;
+};
+
+export type CopyTemplatesResultDto = {
+  sourceWhatsAppAccountId: string;
+  targetWhatsAppAccountId: string;
+  copiedCount: number;
+  skippedCount: number;
+  failedCount: number;
+  items: CopyTemplateItemResultDto[];
+};
+
+export const deleteTemplatesSchema = z.object({
+  whatsAppAccountId: z.string().uuid(),
+  templateIds: z.array(z.string().uuid()).min(1).max(100),
+});
+
+export type DeleteTemplatesInput = z.infer<typeof deleteTemplatesSchema>;
+
+export type DeleteTemplateItemResultDto = {
+  templateId: string;
+  name: string;
+  status: 'deleted' | 'skipped' | 'failed';
+  message?: string;
+};
+
+export type DeleteTemplatesResultDto = {
+  whatsAppAccountId: string;
+  deletedCount: number;
+  skippedCount: number;
+  failedCount: number;
+  items: DeleteTemplateItemResultDto[];
+};
 
 export type TemplateVersionSummaryDto = {
   id: string;

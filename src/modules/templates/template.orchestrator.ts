@@ -2,7 +2,7 @@ import { decryptField } from '../../infrastructure/encryption/fieldCrypto';
 import { getMetaWhatsAppClient } from '../../infrastructure/meta';
 import logger from '../../infrastructure/logging/logger';
 import { NotFoundError } from '../../shared/errors/AppError';
-import { findWhatsAppAccountSecrets } from '../whatsapp/whatsapp.repository';
+import { findWhatsAppAccountByMetaWabaId, findWhatsAppAccountSecrets } from '../whatsapp/whatsapp.repository';
 import { mapMetaTemplateNode, mapMetaTemplateStatus } from './templates.meta';
 import {
   updateTemplateStatusFromWebhook,
@@ -87,8 +87,15 @@ export async function applyTemplateWebhookStatus(input: {
   rawWebhookPayload?: object;
   correlationId?: string;
 }): Promise<void> {
+  const account = input.metaWabaId
+    ? await findWhatsAppAccountByMetaWabaId(input.metaWabaId)
+    : null;
+  const whatsAppAccountId =
+    account && account.organizationId === input.organizationId ? account.id : undefined;
+
   const updated = await updateTemplateStatusFromWebhook({
     organizationId: input.organizationId,
+    whatsAppAccountId,
     metaTemplateId: input.metaTemplateId,
     metaTemplateName: input.metaTemplateName,
     language: input.language,

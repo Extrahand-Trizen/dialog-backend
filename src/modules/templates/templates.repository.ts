@@ -132,9 +132,19 @@ function toDetailDto(row: TemplateRow): TemplateDetailDto {
   };
 }
 
-function connectedTemplatesFilter(connectedAccountIds: string[]): Prisma.TemplateWhereInput {
+function connectedTemplatesFilter(
+  connectedAccountIds: string[],
+  whatsAppAccountId?: string,
+): Prisma.TemplateWhereInput {
   if (connectedAccountIds.length === 0) {
     return { id: { in: [] } };
+  }
+
+  if (whatsAppAccountId) {
+    if (!connectedAccountIds.includes(whatsAppAccountId)) {
+      return { id: { in: [] } };
+    }
+    return { whatsAppAccountId };
   }
 
   return {
@@ -190,6 +200,7 @@ export async function softDeleteTemplatesForWhatsAppAccount(input: {
 
 export async function findActiveTemplateForCreate(input: {
   organizationId: string;
+  whatsAppAccountId: string;
   metaTemplateName: string;
   language: string;
 }): Promise<{ id: string; whatsAppAccountId: string | null } | null> {
@@ -206,9 +217,19 @@ export async function findActiveTemplateForCreate(input: {
       organizationId: input.organizationId,
       metaTemplateName: input.metaTemplateName,
       deletedAt: null,
-      OR: [
-        { language: normalizedLanguage },
-        ...languageVariants.map((language) => ({ language })),
+      AND: [
+        {
+          OR: [
+            { language: normalizedLanguage },
+            ...languageVariants.map((language) => ({ language })),
+          ],
+        },
+        {
+          OR: [
+            { whatsAppAccountId: input.whatsAppAccountId },
+            { whatsAppAccountId: null },
+          ],
+        },
       ],
     },
     orderBy: { updatedAt: 'desc' },
@@ -244,18 +265,20 @@ async function findTemplateForMetaUpsert(input: {
     });
   }
 
-  if (input.whatsAppAccountId) {
-    lookupFilters.push({
-      metaTemplateName: input.metaTemplateName,
-      whatsAppAccountId: input.whatsAppAccountId,
-    });
-  }
+  const accountScope: Prisma.TemplateWhereInput | undefined = input.whatsAppAccountId
+    ? {
+        OR: [
+          { whatsAppAccountId: input.whatsAppAccountId },
+          { whatsAppAccountId: null },
+        ],
+      }
+    : undefined;
 
   return prisma.template.findFirst({
     where: {
       organizationId: input.organizationId,
       deletedAt: null,
-      OR: lookupFilters,
+      AND: [{ OR: lookupFilters }, ...(accountScope ? [accountScope] : [])],
     },
     orderBy: { updatedAt: 'desc' },
     select: {
@@ -303,6 +326,7 @@ export async function listTemplatesByOrganization(input: {
   metaStatus?: MetaTemplateStatus;
   category?: TemplateCategory;
   search?: string;
+  whatsAppAccountId?: string;
 }): Promise<{ items: TemplateSummaryDto[]; total: number }> {
   const prisma = getPrismaClient();
   if (!prisma) {
@@ -314,7 +338,7 @@ export async function listTemplatesByOrganization(input: {
   const where: Prisma.TemplateWhereInput = {
     organizationId: input.organizationId,
     deletedAt: null,
-    ...connectedTemplatesFilter(connectedAccountIds),
+    ...connectedTemplatesFilter(connectedAccountIds, input.whatsAppAccountId),
     ...(input.metaStatus ? { metaStatus: input.metaStatus } : {}),
     ...(input.category ? { category: input.category } : {}),
     ...(input.search
@@ -339,6 +363,95 @@ export async function listTemplatesByOrganization(input: {
     items: rows.map((row) => toSummaryDto(row as TemplateRow)),
     total,
   };
+}
+
+export type TemplateCopySourceRow = {
+  id: string;
+  metaTemplateName: string;
+  metaTemplateId: string | null;
+  language: string;
+  category: TemplateCategory;
+  components: Prisma.JsonValue | null;
+  variableSchema: Prisma.JsonValue | null;
+};
+
+export async function listTemplatesForCopy(input: {
+  organizationId: string;
+  whatsAppAccountId: string;
+  templateIds?: string[];
+  limit?: number;
+}): Promise<TemplateCopySourceRow[]> {
+  const prisma = getPrismaClient();
+  if (!prisma) {
+    throw new InternalServerError('Database not configured', 'DATABASE_NOT_CONFIGURED');
+  }
+
+  const take = Math.min(input.limit ?? 100, 100);
+
+  const rows = await prisma.template.findMany({
+    where: {
+      organizationId: input.organizationId,
+      whatsAppAccountId: input.whatsAppAccountId,
+      deletedAt: null,
+      ...(input.templateIds?.length ? { id: { in: input.templateIds } } : {}),
+    },
+    orderBy: { updatedAt: 'desc' },
+    take,
+    select: {
+      id: true,
+      metaTemplateName: true,
+      metaTemplateId: true,
+      language: true,
+      category: true,
+      currentVersion: {
+        select: {
+          components: true,
+          variableSchema: true,
+        },
+      },
+    },
+  });
+
+  return rows.map((row) => ({
+    id: row.id,
+    metaTemplateName: row.metaTemplateName,
+    metaTemplateId: row.metaTemplateId,
+    language: row.language,
+    category: row.category,
+    components: row.currentVersion?.components ?? null,
+    variableSchema: row.currentVersion?.variableSchema ?? null,
+  }));
+}
+
+export async function findActiveNotificationRuleNamesByTemplateIds(
+  organizationId: string,
+  templateIds: string[],
+): Promise<Map<string, string[]>> {
+  const prisma = getPrismaClient();
+  if (!prisma || templateIds.length === 0) {
+    return new Map();
+  }
+
+  const rows = await prisma.notificationRule.findMany({
+    where: {
+      organizationId,
+      templateId: { in: templateIds },
+      deletedAt: null,
+    },
+    select: {
+      templateId: true,
+      name: true,
+    },
+  });
+
+  const namesByTemplateId = new Map<string, string[]>();
+  for (const row of rows) {
+    const names = namesByTemplateId.get(row.templateId) ?? [];
+    names.push(row.name);
+    namesByTemplateId.set(row.templateId, names);
+  }
+
+  return namesByTemplateId;
 }
 
 export async function findTemplateById(
@@ -619,6 +732,7 @@ export async function upsertTemplateFromMeta(
 
 export async function updateTemplateStatusFromWebhook(input: {
   organizationId: string;
+  whatsAppAccountId?: string;
   metaTemplateId?: string;
   metaTemplateName?: string;
   language?: string;
@@ -665,7 +779,19 @@ export async function updateTemplateStatusFromWebhook(input: {
     where: {
       organizationId: input.organizationId,
       deletedAt: null,
-      OR: lookupFilters,
+      AND: [
+        { OR: lookupFilters },
+        ...(input.whatsAppAccountId
+          ? [
+              {
+                OR: [
+                  { whatsAppAccountId: input.whatsAppAccountId },
+                  { whatsAppAccountId: null },
+                ],
+              },
+            ]
+          : []),
+      ],
     },
     orderBy: { updatedAt: 'desc' },
     select: {
@@ -799,6 +925,7 @@ export async function requireTemplateByName(
   organizationId: string,
   metaTemplateName: string,
   language: string,
+  whatsAppAccountId?: string,
 ): Promise<TemplateDetailDto> {
   const prisma = getPrismaClient();
   if (!prisma) {
@@ -813,6 +940,7 @@ export async function requireTemplateByName(
       metaTemplateName,
       deletedAt: null,
       OR: languageVariants.map((variant) => ({ language: variant })),
+      ...(whatsAppAccountId ? { whatsAppAccountId } : {}),
     },
     orderBy: { updatedAt: 'desc' },
     select: templateSummarySelect,
