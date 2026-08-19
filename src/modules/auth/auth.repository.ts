@@ -10,7 +10,7 @@ export type UserWithMembershipDto = {
   isActive: boolean;
   organizationId: string;
   organizationSlug: string;
-  role: 'ADMIN' | 'VIEWER';
+  role: 'ADMIN' | 'MANAGER' | 'AGENT' | 'VIEWER';
 };
 
 export async function findUserByEmailWithMembership(

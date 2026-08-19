@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { asyncHandler } from '../../middleware/errorHandler';
 import { jwtAuth } from '../../middleware/jwtAuth';
-import { requireAdmin } from '../../middleware/requireRole';
+import { requireManagerOrAdmin } from '../../middleware/requireRole';
 import {
   templateMediaAssetHandler,
   uploadTemplateMediaHandler,
@@ -20,7 +20,7 @@ export function createMediaRouter(): Router {
 
   router.post(
     '/upload',
-    requireAdmin,
+    requireManagerOrAdmin,
     templateMediaUploadMiddleware,
     asyncHandler(uploadTemplateMediaHandler),
   );

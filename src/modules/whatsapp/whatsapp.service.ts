@@ -1,5 +1,6 @@
 import { decryptField, encryptField, isEncryptionConfigured } from '../../infrastructure/encryption/fieldCrypto';
 import { getMetaWhatsAppClient } from '../../infrastructure/meta';
+import logger from '../../infrastructure/logging/logger';
 import {
   InternalServerError,
   NotFoundError,
@@ -62,8 +63,9 @@ async function syncPhoneNumbersForAccount(
       synced.push(phone);
     }
 
-    await ensureDefaultPhoneNumber(accountId, userId);
+    await ensureDefaultPhoneNumber(organizationId, accountId, userId);
     await updateWhatsAppAccountAfterSync({
+      organizationId,
       accountId,
       status: 'ACTIVE',
       lastError: null,
@@ -74,6 +76,7 @@ async function syncPhoneNumbersForAccount(
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Meta sync failed';
     await updateWhatsAppAccountAfterSync({
+      organizationId,
       accountId,
       status: 'ERROR',
       lastError: message,
@@ -102,6 +105,7 @@ export async function connectWhatsAppAccount(
 
   const account = disconnected
     ? await reactivateWhatsAppAccount({
+        organizationId,
         accountId: disconnected.id,
         name: input.name ?? waba.name,
         accessTokenEnc: encryptField(input.accessToken),
@@ -118,6 +122,18 @@ export async function connectWhatsAppAccount(
         webhookVerifyToken: input.webhookVerifyToken,
         createdById: userId,
       });
+
+  try {
+    await metaClient.subscribeToWaba(input.metaWabaId, input.accessToken);
+  } catch (error) {
+    // Best effort: the account is still fully usable without this — Meta just
+    // won't deliver webhook events (status updates, template approvals) until
+    // it succeeds. Don't fail the whole connect over it.
+    logger.warn('Failed to subscribe app to WABA webhooks', {
+      metaWabaId: input.metaWabaId,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   let phoneNumbers: PhoneNumberDto[] = [];
   if (input.syncPhones) {
@@ -207,7 +223,7 @@ export async function disconnectWhatsAppAccount(
     deletedById: userId,
   });
 
-  const messageCount = await countMessagesForAccount(accountId);
+  const messageCount = await countMessagesForAccount(organizationId, accountId);
   if (messageCount > 0) {
     await markWhatsAppAccountDisconnected({
       organizationId,

@@ -13,6 +13,7 @@ import type {
   MetaSendMessageResponse,
   MetaSendTemplateComponent,
   MetaSendTemplateRequest,
+  MetaSubscribeResponse,
   MetaUnsubscribeResponse,
   MetaWabaResponse,
 } from './meta.types';
@@ -77,6 +78,16 @@ export class MetaWhatsAppClient {
   ): Promise<MetaUnsubscribeResponse> {
     return this.request<MetaUnsubscribeResponse>(`/${metaWabaId}/subscribed_apps`, accessToken, {
       method: 'DELETE',
+    });
+  }
+
+  /** Required for Meta to deliver webhook events (message status, template status, etc.) for this WABA. */
+  async subscribeToWaba(
+    metaWabaId: string,
+    accessToken: string,
+  ): Promise<MetaSubscribeResponse> {
+    return this.request<MetaSubscribeResponse>(`/${metaWabaId}/subscribed_apps`, accessToken, {
+      method: 'POST',
     });
   }
 

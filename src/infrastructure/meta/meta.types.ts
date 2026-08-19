@@ -25,6 +25,10 @@ export type MetaUnsubscribeResponse = {
   success: boolean;
 };
 
+export type MetaSubscribeResponse = {
+  success: boolean;
+};
+
 export type MetaPhoneNumberNode = {
   id: string;
   display_phone_number?: string;

@@ -2,7 +2,7 @@ import { decryptField } from '../../infrastructure/encryption/fieldCrypto';
 import { getMetaWhatsAppClient } from '../../infrastructure/meta';
 import { enqueueMessageSend } from '../../infrastructure/queues/queues';
 import { acquireWhatsAppSendSlot } from '../../infrastructure/redis/sendRateLimit';
-import { ExternalServiceError, ValidationError } from '../../shared/errors/AppError';
+import { ExternalServiceError, InternalServerError, ValidationError } from '../../shared/errors/AppError';
 import { isRetryableSendError, MetaApiError } from '../../shared/errors/sendErrors';
 import { scheduleOutboundWebhook } from '../outboundWebhooks';
 import { findWhatsAppAccountSecrets } from '../whatsapp/whatsapp.repository';
@@ -15,6 +15,9 @@ import {
 } from './messages.meta';
 import {
   createOutboundTemplateMessage,
+  findLatestEventPayloadByCorrelationIdForOrg,
+  findMessageCorrelationIdForOrg,
+  findTemplateVersionComponentsForOrg,
   markMessageFailed,
   markMessageSent,
   requireMessageSendContext,
@@ -22,7 +25,6 @@ import {
 } from './messages.repository';
 import type { CreatedOutboundMessageDto, OutboundTemplateMessageInput } from './messages.schemas';
 import type { MetaSendTemplateComponent } from '../../infrastructure/meta';
-import { getPrismaClient } from '../../infrastructure/prisma/client';
 import logger from '../../infrastructure/logging/logger';
 
 /**
@@ -30,6 +32,7 @@ import logger from '../../infrastructure/logging/logger';
  * (e.g. mid-deploy race). Meta error #132012 / #131008 otherwise.
  */
 export async function repairOutboundTemplateComponents(
+  organizationId: string,
   messageId: string,
   staged: MetaSendTemplateComponent[],
   templateVersionId: string | null | undefined,
@@ -44,20 +47,21 @@ export async function repairOutboundTemplateComponents(
     );
   }
 
-  const prisma = getPrismaClient();
-  if (!prisma) {
-    // Never send body-only IMAGE templates because prisma was briefly unavailable.
-    throw new MetaApiError(
-      'Database unavailable while repairing template components',
-      'DATABASE_NOT_CONFIGURED',
-      503,
-    );
+  let version: Awaited<ReturnType<typeof findTemplateVersionComponentsForOrg>>;
+  try {
+    version = await findTemplateVersionComponentsForOrg(organizationId, templateVersionId);
+  } catch (error) {
+    if (error instanceof InternalServerError && error.errorCode === 'DATABASE_NOT_CONFIGURED') {
+      // Never send body-only IMAGE templates because prisma was briefly unavailable —
+      // surface as retryable so the queue retries instead of shipping a broken message.
+      throw new MetaApiError(
+        'Database unavailable while repairing template components',
+        'DATABASE_NOT_CONFIGURED',
+        503,
+      );
+    }
+    throw error;
   }
-
-  const version = await prisma.templateVersion.findUnique({
-    where: { id: templateVersionId },
-    select: { components: true },
-  });
   if (!version?.components) {
     if (outboundHasMediaHeader(staged)) {
       return staged;
@@ -97,20 +101,12 @@ export async function repairOutboundTemplateComponents(
 
   if (buttons.length === 0) {
     // Recover taskId from the original event ingest when staged button used a title example.
-    const messageRow = await prisma.message.findUnique({
-      where: { id: messageId },
-      select: { correlationId: true },
-    });
+    const messageCorrelationId = await findMessageCorrelationIdForOrg(organizationId, messageId);
     let payload: Record<string, unknown> = {};
-    if (messageRow?.correlationId) {
-      const event = await prisma.eventIngest.findFirst({
-        where: { correlationId: messageRow.correlationId },
-        select: { payload: true },
-        orderBy: { createdAt: 'desc' },
-      });
-      if (event?.payload && typeof event.payload === 'object' && !Array.isArray(event.payload)) {
-        payload = event.payload as Record<string, unknown>;
-      }
+    if (messageCorrelationId) {
+      payload =
+        (await findLatestEventPayloadByCorrelationIdForOrg(organizationId, messageCorrelationId)) ??
+        {};
     }
 
     try {
@@ -217,6 +213,7 @@ export async function sendOutboundMessage(messageId: string): Promise<void> {
   let metaComponents: MetaSendTemplateComponent[];
   try {
     metaComponents = await repairOutboundTemplateComponents(
+      context.organizationId,
       messageId,
       context.metaComponents,
       context.templateVersionId,

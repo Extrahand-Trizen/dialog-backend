@@ -12,7 +12,7 @@ export type AuthUserDto = {
   email: string;
   firstName: string;
   lastName: string;
-  role: 'ADMIN' | 'VIEWER';
+  role: 'ADMIN' | 'MANAGER' | 'AGENT' | 'VIEWER';
   organizationId: string;
   organizationSlug: string;
 };

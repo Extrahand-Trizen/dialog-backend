@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { asyncHandler } from '../../middleware/errorHandler';
 import { jwtAuth } from '../../middleware/jwtAuth';
-import { requireAdmin } from '../../middleware/requireRole';
+import { requireManagerOrAdmin } from '../../middleware/requireRole';
 import { validate } from '../../middleware/validate';
 import { listTemplatesQuerySchema, syncTemplatesSchema, copyTemplatesSchema, deleteTemplatesSchema, createTemplateSchema, updateTemplateSchema, updateTemplateVariableNamesSchema } from './templates.schemas';
 import {
@@ -23,37 +23,37 @@ export function createTemplatesRouter(): Router {
   router.get('/', validate(listTemplatesQuerySchema, 'query'), asyncHandler(listTemplatesHandler));
   router.post(
     '/',
-    requireAdmin,
+    requireManagerOrAdmin,
     validate(createTemplateSchema),
     asyncHandler(createTemplateHandler),
   );
   router.post(
     '/sync',
-    requireAdmin,
+    requireManagerOrAdmin,
     validate(syncTemplatesSchema),
     asyncHandler(syncTemplatesHandler),
   );
   router.post(
     '/copy',
-    requireAdmin,
+    requireManagerOrAdmin,
     validate(copyTemplatesSchema),
     asyncHandler(copyTemplatesHandler),
   );
   router.post(
     '/delete',
-    requireAdmin,
+    requireManagerOrAdmin,
     validate(deleteTemplatesSchema),
     asyncHandler(deleteTemplatesHandler),
   );
   router.patch(
     '/:id',
-    requireAdmin,
+    requireManagerOrAdmin,
     validate(updateTemplateSchema),
     asyncHandler(updateTemplateHandler),
   );
   router.patch(
     '/:id/variable-names',
-    requireAdmin,
+    requireManagerOrAdmin,
     validate(updateTemplateVariableNamesSchema),
     asyncHandler(updateTemplateVariableNamesHandler),
   );

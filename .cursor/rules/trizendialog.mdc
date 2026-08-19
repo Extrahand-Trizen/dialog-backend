@@ -116,8 +116,14 @@ Allowed modules:
 - dashboard
 - analytics
 - integrations
+- platformAdmin
 
 New modules require a clear domain boundary and ownership.
+
+`platformAdmin` is the only module allowed to sit outside organization scope
+(Platform Super Admin: cross-tenant oversight, organization provisioning). It
+authenticates via `platformAdminAuth`/`requirePlatformAdmin`, never `jwtAuth`,
+and must never be reachable by an org-scoped `ADMIN`/`VIEWER` token.
 
 MUST NOT add `modules/campaigns/` in V1.
 

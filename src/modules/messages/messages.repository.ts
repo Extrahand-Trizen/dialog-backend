@@ -488,3 +488,62 @@ export async function findOutboundMessageByIdempotencyKey(input: {
 
   return row ? { id: row.id, status: row.status as MessageStatus } : null;
 }
+
+export async function findTemplateVersionComponentsForOrg(
+  organizationId: string,
+  templateVersionId: string,
+): Promise<{ components: Prisma.JsonValue } | null> {
+  const prisma = getPrismaClient();
+  if (!prisma) {
+    throw new InternalServerError('Database not configured', 'DATABASE_NOT_CONFIGURED');
+  }
+
+  return prisma.templateVersion.findFirst({
+    where: { id: templateVersionId, template: { organizationId } },
+    select: { components: true },
+  });
+}
+
+export async function findMessageCorrelationIdForOrg(
+  organizationId: string,
+  messageId: string,
+): Promise<string | null> {
+  const prisma = getPrismaClient();
+  if (!prisma) {
+    throw new InternalServerError('Database not configured', 'DATABASE_NOT_CONFIGURED');
+  }
+
+  const row = await prisma.message.findFirst({
+    where: { id: messageId, organizationId },
+    select: { correlationId: true },
+  });
+
+  return row?.correlationId ?? null;
+}
+
+/**
+ * Recovers the raw event payload for a staged message's correlationId, scoped
+ * to the sending org — correlationId is client-controlled (x-correlation-id
+ * header) and not globally unique, so an unscoped lookup here would leak
+ * another organization's EventIngest payload into this org's outbound message.
+ */
+export async function findLatestEventPayloadByCorrelationIdForOrg(
+  organizationId: string,
+  correlationId: string,
+): Promise<Record<string, unknown> | null> {
+  const prisma = getPrismaClient();
+  if (!prisma) {
+    throw new InternalServerError('Database not configured', 'DATABASE_NOT_CONFIGURED');
+  }
+
+  const event = await prisma.eventIngest.findFirst({
+    where: { organizationId, correlationId },
+    select: { payload: true },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  if (event?.payload && typeof event.payload === 'object' && !Array.isArray(event.payload)) {
+    return event.payload as Record<string, unknown>;
+  }
+  return null;
+}

@@ -162,8 +162,10 @@ export async function patchOutboundWebhookConfig(input: {
   return toConfigDto(row);
 }
 
-export async function findMessageWebhookPayload(messageId: string): Promise<{
-  organizationId: string;
+export async function findMessageWebhookPayload(
+  organizationId: string,
+  messageId: string,
+): Promise<{
   correlationId: string | null;
   metaTemplateName: string | null;
   recipientPhone: string;
@@ -177,10 +179,9 @@ export async function findMessageWebhookPayload(messageId: string): Promise<{
     throw new InternalServerError('Database not configured', 'DATABASE_NOT_CONFIGURED');
   }
 
-  const row = await prisma.message.findUnique({
-    where: { id: messageId },
+  const row = await prisma.message.findFirst({
+    where: { id: messageId, organizationId },
     select: {
-      organizationId: true,
       correlationId: true,
       metaTemplateName: true,
       recipientPhone: true,

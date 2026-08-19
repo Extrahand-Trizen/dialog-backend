@@ -65,6 +65,42 @@ export async function seedAdmin(prisma: PrismaClient): Promise<void> {
   console.log(`Seeded organization "${ORGANIZATION_SLUG}" and admin ${email}`);
 }
 
+/**
+ * Bootstraps the first Platform Super Admin. Needed once, before the
+ * platformAdmin API can be used to create any organization — there is no
+ * other way to reach isPlatformAdmin=true from a clean database.
+ */
+export async function seedPlatformAdmin(prisma: PrismaClient): Promise<void> {
+  const email = process.env.PLATFORM_ADMIN_EMAIL?.toLowerCase();
+  const password = process.env.PLATFORM_ADMIN_PASSWORD;
+
+  if (!email || !password) {
+    console.log('Skipping platform admin seed — set PLATFORM_ADMIN_EMAIL and PLATFORM_ADMIN_PASSWORD');
+    return;
+  }
+
+  const passwordHash = await bcrypt.hash(password, 12);
+
+  await prisma.user.upsert({
+    where: { email },
+    create: {
+      email,
+      passwordHash,
+      firstName: 'Platform',
+      lastName: 'Admin',
+      isActive: true,
+      isPlatformAdmin: true,
+    },
+    update: {
+      passwordHash,
+      isActive: true,
+      isPlatformAdmin: true,
+    },
+  });
+
+  console.log(`Seeded platform admin ${email}`);
+}
+
 async function main(): Promise<void> {
   const connectionString = getPostgresUri();
   if (!connectionString) {
@@ -76,6 +112,7 @@ async function main(): Promise<void> {
 
   try {
     await seedAdmin(prisma);
+    await seedPlatformAdmin(prisma);
   } finally {
     await prisma.$disconnect();
   }

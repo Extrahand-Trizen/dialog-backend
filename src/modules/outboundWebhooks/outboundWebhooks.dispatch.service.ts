@@ -24,8 +24,8 @@ export async function deliverOutboundWebhook(input: {
     return;
   }
 
-  const message = await findMessageWebhookPayload(input.messageId);
-  if (!message || message.organizationId !== input.organizationId) {
+  const message = await findMessageWebhookPayload(input.organizationId, input.messageId);
+  if (!message) {
     logger.warn('Outbound webhook skipped — message not found', {
       messageId: input.messageId,
       organizationId: input.organizationId,

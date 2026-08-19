@@ -48,6 +48,10 @@ function requireSendContext(req: Request): {
     };
   }
 
+  if (auth.type !== 'jwt') {
+    throw new Error('Auth context missing after auth middleware');
+  }
+
   return {
     organizationId: auth.organizationId,
     correlationId: req.correlationId ?? auth.userId,

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { asyncHandler } from '../../middleware/errorHandler';
 import { jwtAuth } from '../../middleware/jwtAuth';
-import { requireAdmin } from '../../middleware/requireRole';
+import { requireManagerOrAdmin } from '../../middleware/requireRole';
 import { validate } from '../../middleware/validate';
 import {
   createNotificationRuleSchema,
@@ -29,17 +29,17 @@ export function createNotificationRulesRouter(): Router {
   router.get('/:id', asyncHandler(getNotificationRuleHandler));
   router.post(
     '/',
-    requireAdmin,
+    requireManagerOrAdmin,
     validate(createNotificationRuleSchema),
     asyncHandler(createNotificationRuleHandler),
   );
   router.patch(
     '/:id',
-    requireAdmin,
+    requireManagerOrAdmin,
     validate(updateNotificationRuleSchema),
     asyncHandler(updateNotificationRuleHandler),
   );
-  router.delete('/:id', requireAdmin, asyncHandler(deleteNotificationRuleHandler));
+  router.delete('/:id', requireManagerOrAdmin, asyncHandler(deleteNotificationRuleHandler));
 
   return router;
 }
