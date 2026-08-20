@@ -311,6 +311,7 @@ export async function upsertPhoneNumberFromMeta(input: {
       lastHealthCheckAt: new Date(),
     },
     update: {
+      whatsAppAccountId: input.whatsAppAccountId,
       displayNumber: input.displayNumber,
       verifiedName: input.verifiedName ?? null,
       qualityRating: input.qualityRating,

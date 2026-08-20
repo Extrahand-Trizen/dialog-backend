@@ -8,19 +8,14 @@ export function coerceMetaTemplateId(value: unknown): string | undefined {
   return undefined;
 }
 
-/** Canonical language stored in DB — e.g. en_US -> en */
 export function normalizeStoredTemplateLanguage(language: string): string {
   const trimmed = language.trim();
   if (!trimmed) {
     return trimmed;
   }
 
-  const base = trimmed.split(/[_-]/)[0]?.toLowerCase();
-  if (base && base.length >= 2) {
-    return base;
-  }
-
-  return trimmed.toLowerCase();
+  // Preserve the full locale (e.g. en_US) replacing hyphens with underscores
+  return trimmed.replace('-', '_');
 }
 
 export function languageLookupVariants(language?: string): string[] {

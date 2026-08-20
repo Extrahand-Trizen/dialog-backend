@@ -294,14 +294,25 @@ function resolveUrlButtonSuffix(payload: unknown, buttonIndex: number): string |
   return undefined;
 }
 
-export function withTemplateSendComponents(
-  templateComponents: unknown,
-  bodyComponents: MetaSendTemplateComponent[],
-  payload: unknown,
-): MetaSendTemplateComponent[] {
-  const header = buildHeaderComponentFromTemplate(templateComponents);
-  const buttons = buildUrlButtonComponentsFromTemplate(templateComponents, payload);
-  return [...(header ? [header] : []), ...bodyComponents, ...buttons];
+function buildParametersForComponent(
+  component: Record<string, unknown> | undefined,
+  resolver: (index: number) => string | undefined,
+): { type: 'text'; text: string }[] {
+  if (!component) return [];
+  const text = typeof component.text === 'string' ? component.text : '';
+  const matches = [...text.matchAll(/\{\{(\d+)\}\}/g)];
+  const parameters: { type: 'text'; text: string }[] = [];
+  for (const match of matches) {
+    const index = Number.parseInt(match[1], 10);
+    const value = resolver(index);
+    if (value === undefined || value.length === 0) {
+      throw new ValidationError(`Missing template variable: slot ${index}`, {
+        index,
+      });
+    }
+    parameters.push({ type: 'text', text: value });
+  }
+  return parameters;
 }
 
 export function buildTemplateComponentsFromMapping(
@@ -309,32 +320,50 @@ export function buildTemplateComponentsFromMapping(
   payload: unknown,
   templateComponents?: unknown,
 ): MetaSendTemplateComponent[] {
-  const indices = Object.keys(variableMapping)
-    .map((key) => Number.parseInt(key, 10))
-    .filter((value) => Number.isFinite(value))
-    .sort((left, right) => left - right);
+  const components = coerceTemplateComponentsArray(templateComponents) || [];
+
+  const resolver = (index: number): string | undefined => {
+    const path = variableMapping[String(index)];
+    if (!path) return undefined;
+    return resolvePayloadValue(payload, path);
+  };
+
+  const headerComponent = components.find(
+    (c) => isRecord(c) && typeof c.type === 'string' && c.type.toUpperCase() === 'HEADER'
+  ) as Record<string, unknown> | undefined;
+
+  const bodyComponent = components.find(
+    (c) => isRecord(c) && typeof c.type === 'string' && c.type.toUpperCase() === 'BODY'
+  ) as Record<string, unknown> | undefined;
 
   const bodyComponents: MetaSendTemplateComponent[] = [];
 
-  if (indices.length > 0) {
-    const parameters: { type: 'text'; text: string }[] = [];
-
-    for (const index of indices) {
-      const path = variableMapping[String(index)];
-      const value = resolvePayloadValue(payload, path);
-      if (value === undefined) {
-        throw new ValidationError(`Missing template variable for slot ${index}`, {
-          index,
-          path,
-        });
-      }
-      parameters.push({ type: 'text', text: value });
+  // 1. Build Header component parameters if it is TEXT format
+  let header: MetaSendTemplateComponent | null = null;
+  if (
+    headerComponent &&
+    typeof headerComponent.format === 'string' &&
+    headerComponent.format.toUpperCase().trim() === 'TEXT'
+  ) {
+    const headerParams = buildParametersForComponent(headerComponent, resolver);
+    if (headerParams.length > 0) {
+      header = { type: 'header', parameters: headerParams };
     }
-
-    bodyComponents.push({ type: 'body', parameters });
+  } else {
+    // Media header (IMAGE, VIDEO, DOCUMENT) or null
+    header = buildHeaderComponentFromTemplate(templateComponents);
   }
 
-  return withTemplateSendComponents(templateComponents, bodyComponents, payload);
+  // 2. Build Body component parameters
+  const bodyParams = buildParametersForComponent(bodyComponent, resolver);
+  if (bodyParams.length > 0) {
+    bodyComponents.push({ type: 'body', parameters: bodyParams });
+  }
+
+  // 3. Build Buttons
+  const buttons = buildUrlButtonComponentsFromTemplate(templateComponents, payload);
+
+  return [...(header ? [header] : []), ...bodyComponents, ...buttons];
 }
 
 export function buildTemplateComponentsFromVariables(
@@ -342,43 +371,60 @@ export function buildTemplateComponentsFromVariables(
   variables: Record<string, string> | string[] | undefined,
   templateComponents?: unknown,
 ): MetaSendTemplateComponent[] {
-  const schema = parseTemplateVariableSchema(variableSchema);
-  const bodyComponents: MetaSendTemplateComponent[] = [];
+  const components = coerceTemplateComponentsArray(templateComponents) || [];
 
-  if (schema.variables.length > 0) {
-    const parameters: { type: 'text'; text: string }[] = [];
-
-    for (const slot of schema.variables) {
-      let value: string | undefined;
-
-      if (Array.isArray(variables)) {
-        value = variables[slot.index - 1];
-      } else if (variables) {
-        if (slot.name) {
+  const resolver = (index: number): string | undefined => {
+    let value: string | undefined;
+    if (Array.isArray(variables)) {
+      value = variables[index - 1];
+    } else if (variables) {
+      value = variables[String(index)];
+      if (value === undefined) {
+        const schema = parseTemplateVariableSchema(variableSchema);
+        const slot = schema.variables.find((v) => v.index === index);
+        if (slot?.name) {
           value = variables[slot.name];
         }
-        if (value === undefined) {
-          value = variables[String(slot.index)];
-        }
       }
-
-      if (value === undefined || value.length === 0) {
-        const label = slot.name ?? `slot ${slot.index}`;
-        throw new ValidationError(`Missing template variable: ${label}`, {
-          index: slot.index,
-          name: slot.name,
-        });
-      }
-
-      parameters.push({ type: 'text', text: value });
     }
+    return value;
+  };
 
-    bodyComponents.push({ type: 'body', parameters });
+  const headerComponent = components.find(
+    (c) => isRecord(c) && typeof c.type === 'string' && c.type.toUpperCase() === 'HEADER'
+  ) as Record<string, unknown> | undefined;
+
+  const bodyComponent = components.find(
+    (c) => isRecord(c) && typeof c.type === 'string' && c.type.toUpperCase() === 'BODY'
+  ) as Record<string, unknown> | undefined;
+
+  const bodyComponents: MetaSendTemplateComponent[] = [];
+
+  // 1. Build Header component parameters if it is TEXT format
+  let header: MetaSendTemplateComponent | null = null;
+  if (
+    headerComponent &&
+    typeof headerComponent.format === 'string' &&
+    headerComponent.format.toUpperCase().trim() === 'TEXT'
+  ) {
+    const headerParams = buildParametersForComponent(headerComponent, resolver);
+    if (headerParams.length > 0) {
+      header = { type: 'header', parameters: headerParams };
+    }
+  } else {
+    // Media header or null
+    header = buildHeaderComponentFromTemplate(templateComponents);
   }
 
-  // Manual sends pass variables only; prefer variables.taskId for URL buttons when present.
-  const payloadForButtons =
-    variables && !Array.isArray(variables) ? variables : variables ?? {};
+  // 2. Build Body component parameters
+  const bodyParams = buildParametersForComponent(bodyComponent, resolver);
+  if (bodyParams.length > 0) {
+    bodyComponents.push({ type: 'body', parameters: bodyParams });
+  }
 
-  return withTemplateSendComponents(templateComponents, bodyComponents, payloadForButtons);
+  // 3. Build Buttons
+  const payloadForButtons = variables && !Array.isArray(variables) ? variables : {};
+  const buttons = buildUrlButtonComponentsFromTemplate(templateComponents, payloadForButtons);
+
+  return [...(header ? [header] : []), ...bodyComponents, ...buttons];
 }
