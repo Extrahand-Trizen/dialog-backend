@@ -56,6 +56,7 @@ async function syncPhoneNumbersForAccount(
       }
 
       const phone = await upsertPhoneNumberFromMeta({
+        organizationId,
         whatsAppAccountId: accountId,
         ...mapped,
         updatedById: userId,

@@ -46,8 +46,12 @@ export class NotFoundError extends AppError {
 }
 
 export class ConflictError extends AppError {
-  constructor(message = 'Conflict', errorCode = 'CONFLICT') {
-    super(message, errorCode, 409);
+  constructor(
+    message = 'Conflict',
+    errorCode = 'CONFLICT',
+    details?: Record<string, unknown>,
+  ) {
+    super(message, errorCode, 409, details);
   }
 }
 
@@ -58,8 +62,12 @@ export class RateLimitError extends AppError {
 }
 
 export class ExternalServiceError extends AppError {
-  constructor(message = 'External service error', errorCode = 'EXTERNAL_SERVICE_ERROR') {
-    super(message, errorCode, 502);
+  constructor(
+    message = 'External service error',
+    errorCode = 'EXTERNAL_SERVICE_ERROR',
+    details?: Record<string, unknown>,
+  ) {
+    super(message, errorCode, 502, details);
   }
 }
 

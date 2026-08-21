@@ -94,6 +94,25 @@ describe('buildTemplateComponentsFromVariables', () => {
     });
   });
 
+  it('throws when IMAGE header is required but no public media URL is stored', () => {
+    assert.throws(
+      () =>
+        buildTemplateComponentsFromVariables(
+          { variables: [{ index: 1 }] },
+          { '1': 'Ravi' },
+          [
+            {
+              type: 'HEADER',
+              format: 'IMAGE',
+              example: { header_handle: ['4::meta-handle-only'] },
+            },
+            { type: 'BODY', text: 'Hi {{1}}' },
+          ],
+        ),
+      /no public media URL/i,
+    );
+  });
+
   it('throws when URL button needs a task id but payload has none', () => {
     assert.throws(
       () =>
@@ -117,5 +136,15 @@ describe('buildTemplateComponentsFromVariables', () => {
         ),
       /valid task id/i,
     );
+  });
+
+  it('leaves text-only templates unchanged (no media header)', () => {
+    const components = buildTemplateComponentsFromVariables(
+      { variables: [{ index: 1 }] },
+      { '1': 'Ravi' },
+      [{ type: 'BODY', text: 'Hi {{1}}' }],
+    );
+    assert.equal(components.length, 1);
+    assert.equal(components[0]?.type, 'body');
   });
 });

@@ -100,6 +100,8 @@ export type MessageSendContextDto = {
   templateVersionId: string | null;
   metaComponents: MetaSendTemplateComponent[];
   metaPhoneNumberId: string;
+  phoneNumberId: string;
+  phoneOrganizationId: string;
   whatsAppAccountId: string;
   qualityRating: string;
 };

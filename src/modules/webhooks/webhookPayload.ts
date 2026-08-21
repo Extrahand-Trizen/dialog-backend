@@ -16,6 +16,18 @@ function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
+/** Meta sends error.code as a number; normalize to string for Message.errorCode. */
+export function normalizeMetaStatusErrorCode(code: unknown): string | undefined {
+  if (typeof code === 'number' && Number.isFinite(code)) {
+    return String(Math.trunc(code));
+  }
+  if (typeof code === 'string') {
+    const trimmed = code.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  }
+  return undefined;
+}
+
 export function parseWebhookPayload(rawBody: string): unknown {
   return JSON.parse(rawBody) as unknown;
 }
@@ -150,8 +162,7 @@ export function extractMessageStatusUpdates(payload: unknown): MetaMessageStatus
           status: status.status,
           timestamp: typeof status.timestamp === 'string' ? status.timestamp : undefined,
           recipientId: typeof status.recipient_id === 'string' ? status.recipient_id : undefined,
-          errorCode:
-            firstError && typeof firstError.code === 'string' ? firstError.code : undefined,
+          errorCode: normalizeMetaStatusErrorCode(firstError?.code),
           errorMessage:
             firstError && typeof firstError.title === 'string'
               ? firstError.title

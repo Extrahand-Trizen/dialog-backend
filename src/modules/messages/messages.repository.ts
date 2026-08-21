@@ -189,6 +189,7 @@ export async function findMessageSendContext(messageId: string): Promise<Message
       metaTemplateName: true,
       components: true,
       templateVersionId: true,
+      phoneNumberId: true,
       templateVersion: {
         select: {
           template: {
@@ -201,6 +202,9 @@ export async function findMessageSendContext(messageId: string): Promise<Message
           metaPhoneNumberId: true,
           whatsAppAccountId: true,
           qualityRating: true,
+          whatsAppAccount: {
+            select: { organizationId: true },
+          },
         },
       },
     },
@@ -220,6 +224,8 @@ export async function findMessageSendContext(messageId: string): Promise<Message
     templateVersionId: row.templateVersionId ?? null,
     metaComponents: (row.components ?? []) as MetaSendTemplateComponent[],
     metaPhoneNumberId: row.phoneNumber.metaPhoneNumberId,
+    phoneNumberId: row.phoneNumberId,
+    phoneOrganizationId: row.phoneNumber.whatsAppAccount.organizationId,
     whatsAppAccountId: row.phoneNumber.whatsAppAccountId,
     qualityRating: row.phoneNumber.qualityRating,
   };

@@ -5,6 +5,7 @@ import {
   InternalServerError,
   NotFoundError,
 } from '../../shared/errors/AppError';
+import { assertPhoneUpsertSameOrganization } from './phoneTenantSafety';
 import type {
   PhoneNumberDto,
   PhoneNumberStatus,
@@ -282,6 +283,7 @@ export async function updateWhatsAppAccountAfterSync(input: {
 }
 
 export async function upsertPhoneNumberFromMeta(input: {
+  organizationId: string;
   whatsAppAccountId: string;
   metaPhoneNumberId: string;
   displayNumber: string;
@@ -295,6 +297,20 @@ export async function upsertPhoneNumberFromMeta(input: {
   if (!prisma) {
     throw new InternalServerError('Database not configured', 'DATABASE_NOT_CONFIGURED');
   }
+
+  const existing = await prisma.phoneNumber.findUnique({
+    where: { metaPhoneNumberId: input.metaPhoneNumberId },
+    select: {
+      id: true,
+      whatsAppAccount: { select: { organizationId: true } },
+    },
+  });
+
+  assertPhoneUpsertSameOrganization({
+    metaPhoneNumberId: input.metaPhoneNumberId,
+    targetOrganizationId: input.organizationId,
+    existingOrganizationId: existing?.whatsAppAccount.organizationId,
+  });
 
   const row = await prisma.phoneNumber.upsert({
     where: { metaPhoneNumberId: input.metaPhoneNumberId },

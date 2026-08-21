@@ -7,15 +7,20 @@ import {
   createOrganizationSchema,
   listOrganizationsQuerySchema,
   platformLoginSchema,
-  updateOrganizationStatusSchema,
+  updateOrganizationSchema,
+  updateWhatsAppAccountNameSchema,
 } from './platformAdmin.schemas';
 import {
   createOrganizationHandler,
+  deleteOrganizationWhatsAppAccountHandler,
   getOrganizationHandler,
+  getOrganizationWhatsAppAccountHandler,
   listOrganizationsHandler,
+  listOrganizationWhatsAppAccountsHandler,
   platformLoginHandler,
   platformMeHandler,
-  updateOrganizationStatusHandler,
+  updateOrganizationHandler,
+  updateOrganizationWhatsAppAccountNameHandler,
 } from './platformAdmin.handlers';
 
 export function createPlatformAdminRouter(): Router {
@@ -40,8 +45,25 @@ export function createPlatformAdminRouter(): Router {
   router.get('/organizations/:id', asyncHandler(getOrganizationHandler));
   router.patch(
     '/organizations/:id',
-    validate(updateOrganizationStatusSchema),
-    asyncHandler(updateOrganizationStatusHandler),
+    validate(updateOrganizationSchema),
+    asyncHandler(updateOrganizationHandler),
+  );
+  router.get(
+    '/organizations/:id/whatsapp-accounts',
+    asyncHandler(listOrganizationWhatsAppAccountsHandler),
+  );
+  router.get(
+    '/organizations/:id/whatsapp-accounts/:accountId',
+    asyncHandler(getOrganizationWhatsAppAccountHandler),
+  );
+  router.patch(
+    '/organizations/:id/whatsapp-accounts/:accountId',
+    validate(updateWhatsAppAccountNameSchema),
+    asyncHandler(updateOrganizationWhatsAppAccountNameHandler),
+  );
+  router.delete(
+    '/organizations/:id/whatsapp-accounts/:accountId',
+    asyncHandler(deleteOrganizationWhatsAppAccountHandler),
   );
 
   return router;

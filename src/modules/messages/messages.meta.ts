@@ -363,7 +363,9 @@ export function buildTemplateComponentsFromMapping(
   // 3. Build Buttons
   const buttons = buildUrlButtonComponentsFromTemplate(templateComponents, payload);
 
-  return [...(header ? [header] : []), ...bodyComponents, ...buttons];
+  const staged = [...(header ? [header] : []), ...bodyComponents, ...buttons];
+  assertOutboundMediaHeaderComplete(templateComponents, staged);
+  return staged;
 }
 
 export function buildTemplateComponentsFromVariables(
@@ -426,5 +428,25 @@ export function buildTemplateComponentsFromVariables(
   const payloadForButtons = variables && !Array.isArray(variables) ? variables : {};
   const buttons = buildUrlButtonComponentsFromTemplate(templateComponents, payloadForButtons);
 
-  return [...(header ? [header] : []), ...bodyComponents, ...buttons];
+  const staged = [...(header ? [header] : []), ...bodyComponents, ...buttons];
+  assertOutboundMediaHeaderComplete(templateComponents, staged);
+  return staged;
+}
+
+function assertOutboundMediaHeaderComplete(
+  templateComponents: unknown,
+  staged: MetaSendTemplateComponent[],
+): void {
+  if (!templateRequiresMediaHeader(templateComponents)) {
+    return;
+  }
+  if (outboundHasMediaHeader(staged)) {
+    return;
+  }
+  throw new ValidationError(
+    'Template requires a media header parameter but none was built — check header_media_url on the template (Meta #132012)',
+    {
+      stagedTypes: staged.map((component) => component.type),
+    },
+  );
 }

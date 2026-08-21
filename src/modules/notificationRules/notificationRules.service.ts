@@ -57,9 +57,13 @@ async function validateRuleReferences(input: {
   if (input.phoneNumberId) {
     const phone = await findPhoneNumberInOrganization(input.organizationId, input.phoneNumberId);
     if (!phone) {
-      throw new ValidationError('Phone number not found for this organization', {
-        phoneNumberId: input.phoneNumberId,
-      });
+      throw new ValidationError(
+        'Phone number not found for this organization (cross-organization phone assignment is not allowed)',
+        {
+          phoneNumberId: input.phoneNumberId,
+          organizationId: input.organizationId,
+        },
+      );
     }
   }
 }

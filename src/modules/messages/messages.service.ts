@@ -26,6 +26,7 @@ import {
 import type { CreatedOutboundMessageDto, OutboundTemplateMessageInput } from './messages.schemas';
 import type { MetaSendTemplateComponent } from '../../infrastructure/meta';
 import logger from '../../infrastructure/logging/logger';
+import { assertMessagePhoneSameOrganization } from '../whatsapp/phoneTenantSafety';
 
 /**
  * Repair staged components that were saved without IMAGE header / URL button
@@ -170,6 +171,39 @@ export async function enqueueStagedMessageSend(
 export async function sendOutboundMessage(messageId: string): Promise<void> {
   const context = await requireMessageSendContext(messageId);
 
+  try {
+    assertMessagePhoneSameOrganization({
+      messageId: context.messageId,
+      messageOrganizationId: context.organizationId,
+      phoneNumberId: context.phoneNumberId,
+      phoneOrganizationId: context.phoneOrganizationId,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : 'CROSS_ORGANIZATION_PHONE_NUMBER_REFERENCE';
+    const errorCode =
+      error instanceof ExternalServiceError
+        ? error.errorCode
+        : 'CROSS_ORGANIZATION_PHONE_NUMBER_REFERENCE';
+    logger.error('Blocked outbound send — phone number belongs to another organization', {
+      messageId: context.messageId,
+      organizationId: context.organizationId,
+      phoneNumberId: context.phoneNumberId,
+      phoneOrganizationId: context.phoneOrganizationId,
+    });
+    const failed = await markMessageFailed({
+      messageId,
+      errorCode,
+      errorMessage: message,
+    });
+    void scheduleOutboundWebhook({
+      organizationId: failed.organizationId,
+      messageId,
+      event: 'message.failed',
+    });
+    throw error;
+  }
+
   if (context.qualityRating === 'RED') {
     const failed = await markMessageFailed({
       messageId,
@@ -218,6 +252,28 @@ export async function sendOutboundMessage(messageId: string): Promise<void> {
       context.metaComponents,
       context.templateVersionId,
     );
+
+    // Final guard: never call Meta with a media-header template missing IMAGE/VIDEO/DOCUMENT.
+    if (context.templateVersionId) {
+      const version = await findTemplateVersionComponentsForOrg(
+        context.organizationId,
+        context.templateVersionId,
+      );
+      if (
+        version?.components &&
+        templateRequiresMediaHeader(version.components) &&
+        !outboundHasMediaHeader(metaComponents)
+      ) {
+        throw new ValidationError(
+          'Template requires IMAGE/VIDEO/DOCUMENT header but outbound components are missing it (Meta #132012)',
+          {
+            messageId,
+            templateVersionId: context.templateVersionId,
+            stagedTypes: metaComponents.map((component) => component.type),
+          },
+        );
+      }
+    }
   } catch (error) {
     if (isRetryableSendError(error)) {
       throw error;

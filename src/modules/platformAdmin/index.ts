@@ -3,7 +3,8 @@ export {
   createOrganizationSchema,
   platformLoginSchema,
   listOrganizationsQuerySchema,
-  updateOrganizationStatusSchema,
+  updateOrganizationSchema,
+  updateWhatsAppAccountNameSchema,
 } from './platformAdmin.schemas';
 export type {
   CreateOrganizationInput,
@@ -14,5 +15,11 @@ export type {
   PlatformAdminUserDto,
   PlatformLoginInput,
   PlatformLoginResultDto,
+  PlatformPhoneNumberDto,
+  PlatformWhatsAppAccountDetailDto,
+  PlatformWhatsAppAccountDto,
+  DeleteWhatsAppAccountResultDto,
+  UpdateOrganizationInput,
   UpdateOrganizationStatusInput,
+  UpdateWhatsAppAccountNameInput,
 } from './platformAdmin.schemas';

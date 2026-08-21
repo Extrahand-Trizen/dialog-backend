@@ -14,7 +14,7 @@
     "seed:admin": "ts-node --transpile-only scripts/seedAdmin.ts",
     "seed:platform-admin": "ts-node --transpile-only scripts/seedPlatformAdmin.ts",
     "lint": "eslint src --ext .ts",
-    "test": "node --test --require ts-node/register src/modules/templates/templates.meta.test.ts src/modules/messages/messages.isolation.test.ts",
+    "test": "node --test --require ts-node/register src/modules/templates/templates.meta.test.ts src/modules/messages/messages.isolation.test.ts src/modules/messages/messages.meta.test.ts src/modules/webhooks/webhookPayload.test.ts src/modules/whatsapp/phoneTenantSafety.test.ts src/shared/errors/sendErrors.test.ts",
     "health": "curl -f http://localhost:4010/api/v1/health || exit 1"
   },
   "prisma": {
