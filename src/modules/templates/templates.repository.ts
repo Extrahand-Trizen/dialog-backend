@@ -589,8 +589,6 @@ export type UpsertTemplateFromMetaInput = {
   components: unknown;
   variableSchema: unknown;
   rejectionReason: string | null;
-  /** When true (Meta pull/sync), do not overwrite approval status on existing templates — webhooks own status. */
-  preserveExistingStatus?: boolean;
 };
 
 export type UpsertTemplateFromMetaResult = {
@@ -618,7 +616,6 @@ export async function upsertTemplateFromMeta(
     language: normalizedLanguage,
   });
 
-  const preserveStatus = Boolean(input.preserveExistingStatus && existing);
   const mergedComponents = existing
     ? mergeDialogMediaUrlsIntoSyncedComponents(input.components, existing.currentVersion?.components)
     : input.components;
@@ -676,12 +673,12 @@ export async function upsertTemplateFromMeta(
         metaTemplateName: input.metaTemplateName,
         category: input.category,
         language: normalizedLanguage,
-        ...(preserveStatus ? {} : { metaStatus: input.metaStatus }),
+        metaStatus: input.metaStatus,
         updatedById: input.userId,
       },
     });
 
-    if (existing.currentVersion && !preserveStatus) {
+    if (existing.currentVersion && existing.metaStatus !== input.metaStatus) {
       await prisma.templateVersion.update({
         where: { id: existing.currentVersion.id },
         data: {
@@ -703,9 +700,9 @@ export async function upsertTemplateFromMeta(
         version: nextVersion,
         components: mergedComponents as Prisma.InputJsonValue,
         variableSchema: variableSchemaJson,
-        rejectionReason: preserveStatus ? null : input.rejectionReason,
-        submittedAt: preserveStatus ? null : input.metaStatus === 'PENDING' ? now : null,
-        approvedAt: preserveStatus ? null : input.metaStatus === 'APPROVED' ? now : null,
+        rejectionReason: input.rejectionReason,
+        submittedAt: input.metaStatus === 'PENDING' ? now : null,
+        approvedAt: input.metaStatus === 'APPROVED' ? now : null,
         createdById: input.userId,
       },
     });
@@ -720,7 +717,7 @@ export async function upsertTemplateFromMeta(
         metaTemplateName: input.metaTemplateName,
         category: input.category,
         language: normalizedLanguage,
-        ...(preserveStatus ? {} : { metaStatus: input.metaStatus }),
+        metaStatus: input.metaStatus,
         currentVersionId: version.id,
         updatedById: input.userId,
       },

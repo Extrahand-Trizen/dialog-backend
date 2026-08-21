@@ -40,7 +40,6 @@ export async function syncTemplatesForAccount(input: {
         organizationId: input.organizationId,
         userId: input.userId,
         whatsAppAccountId: input.whatsAppAccountId,
-        preserveExistingStatus: true,
         ...mapped,
       });
 
@@ -57,7 +56,7 @@ export async function syncTemplatesForAccount(input: {
     after = response.paging?.cursors?.after;
   } while (after);
 
-  logger.info('Template sync completed (content import only — status from webhooks)', {
+  logger.info('Template sync completed', {
     correlationId: input.correlationId,
     organizationId: input.organizationId,
     whatsAppAccountId: input.whatsAppAccountId,
