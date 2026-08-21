@@ -1,4 +1,5 @@
 export { MetaWhatsAppClient, getMetaWhatsAppClient } from './MetaWhatsAppClient';
+export { getMetaWebhookSubscribeOptions } from './webhookSubscribeOptions';
 export type {
   MetaCreateMessageTemplateRequest,
   MetaCreateMessageTemplateResponse,

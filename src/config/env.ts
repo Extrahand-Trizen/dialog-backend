@@ -40,6 +40,12 @@ const envSchema = z.object({
   META_API_VERSION: z.string().default('v23.0'),
   META_APP_ID: z.string().min(1).optional(),
   META_WEBHOOK_VERIFY_TOKEN: z.string().optional(),
+  /**
+   * Public HTTPS webhook URL Meta should call for message status updates.
+   * When set with META_WEBHOOK_VERIFY_TOKEN, WABA subscribe uses override_callback_uri
+   * so statuses are not lost if the Meta App Dashboard callback is wrong/stale.
+   */
+  META_WEBHOOK_CALLBACK_URL: z.string().url().optional(),
 
   /** MinIO / S3-compatible storage for template header media previews */
   MINIO_ENDPOINT: z.string().url().optional(),

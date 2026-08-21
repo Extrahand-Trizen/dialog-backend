@@ -14,6 +14,31 @@ export type MessageStatusUpdateResult = {
   status: MessageStatus;
 };
 
+/** Higher rank wins. FAILED is terminal so a late "sent" webhook cannot hide a failure. */
+const MESSAGE_STATUS_RANK: Record<MessageStatus, number> = {
+  QUEUED: 0,
+  SENT: 1,
+  DELIVERED: 2,
+  READ: 3,
+  FAILED: 100,
+};
+
+export function shouldApplyWebhookMessageStatus(
+  current: MessageStatus,
+  next: MessageStatus,
+): boolean {
+  if (current === next) {
+    return true;
+  }
+  if (current === 'FAILED') {
+    return false;
+  }
+  if (next === 'FAILED') {
+    return true;
+  }
+  return MESSAGE_STATUS_RANK[next] >= MESSAGE_STATUS_RANK[current];
+}
+
 export async function updateMessageFromStatusWebhook(input: {
   metaMessageId: string;
   status: MessageStatus;
@@ -38,6 +63,15 @@ export async function updateMessageFromStatusWebhook(input: {
 
   if (!existing) {
     return null;
+  }
+
+  if (!shouldApplyWebhookMessageStatus(existing.status, input.status)) {
+    return {
+      messageId: existing.id,
+      organizationId: existing.organizationId,
+      correlationId: existing.correlationId,
+      status: existing.status,
+    };
   }
 
   const eventTime = input.timestampSeconds

@@ -1,5 +1,5 @@
 import { decryptField, encryptField, isEncryptionConfigured } from '../../infrastructure/encryption/fieldCrypto';
-import { getMetaWhatsAppClient } from '../../infrastructure/meta';
+import { getMetaWhatsAppClient, getMetaWebhookSubscribeOptions } from '../../infrastructure/meta';
 import logger from '../../infrastructure/logging/logger';
 import {
   InternalServerError,
@@ -125,7 +125,11 @@ export async function connectWhatsAppAccount(
       });
 
   try {
-    await metaClient.subscribeToWaba(input.metaWabaId, input.accessToken);
+    await metaClient.subscribeToWaba(
+      input.metaWabaId,
+      input.accessToken,
+      getMetaWebhookSubscribeOptions(),
+    );
   } catch (error) {
     // Best effort: the account is still fully usable without this — Meta just
     // won't deliver webhook events (status updates, template approvals) until
@@ -171,6 +175,23 @@ export async function syncWhatsAppAccountPhones(
   accountId: string,
   userId: string,
 ): Promise<{ account: WhatsAppAccountDto; phoneNumbers: PhoneNumberDto[] }> {
+  const secrets = await findWhatsAppAccountSecrets(organizationId, accountId);
+  if (secrets && isEncryptionConfigured()) {
+    try {
+      const accessToken = decryptField(secrets.accessTokenEnc);
+      await getMetaWhatsAppClient().subscribeToWaba(
+        secrets.account.metaWabaId,
+        accessToken,
+        getMetaWebhookSubscribeOptions(),
+      );
+    } catch (error) {
+      logger.warn('Failed to re-subscribe app to WABA webhooks during phone sync', {
+        accountId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   const phoneNumbers = await syncPhoneNumbersForAccount(organizationId, accountId, userId);
   const account = await getOrganizationWhatsAppAccount(organizationId, accountId);
   return { account, phoneNumbers };

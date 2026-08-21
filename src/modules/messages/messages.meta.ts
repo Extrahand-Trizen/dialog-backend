@@ -5,9 +5,66 @@ import { normalizeTemplateMediaPublicUrl } from '../../infrastructure/storage/te
 /** Dialog-only field stored in HEADER example — mirrors templates.meta DIALOG_HEADER_MEDIA_URL_KEY. */
 const HEADER_MEDIA_URL_KEY = 'header_media_url';
 
+/** Meta sample / CDN links expire and cause "Media upload error" after Sent. */
+const EPHEMERAL_WHATSAPP_MEDIA_HOST_RE =
+  /(?:^|\.)(?:scontent\.whatsapp\.net|lookaside\.fbsbx\.com|scontent\.[a-z0-9-]+\.fbcdn\.net)$/i;
+
 export type TemplateVariableSchema = {
   variables: { index: number; name?: string }[];
 };
+
+export function isEphemeralWhatsAppMediaUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname;
+    return EPHEMERAL_WHATSAPP_MEDIA_HOST_RE.test(host);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Normalize and reject media URLs Meta cannot reliably re-fetch on delivery.
+ * Prefer durable MinIO / public https links stored as header_media_url.
+ */
+export function assertDurableTemplateMediaUrl(rawUrl: string, format: string): string {
+  const link = normalizeTemplateMediaPublicUrl(rawUrl.trim());
+  if (!/^https?:\/\//i.test(link)) {
+    throw new ValidationError('Template header media URL must be a public http(s) URL', {
+      format,
+      mediaUrl: link,
+    });
+  }
+
+  if (isEphemeralWhatsAppMediaUrl(link)) {
+    throw new ValidationError(
+      'Template header uses an expired WhatsApp CDN image link — re-upload the header image in Dialog (MinIO) and send again',
+      { format, mediaUrl: link },
+    );
+  }
+
+  // Bare bucket/base URL with no object key → Meta "Media upload error".
+  try {
+    const parsed = new URL(link);
+    const pathname = parsed.pathname.replace(/\/+$/, '');
+    const segments = pathname.split('/').filter(Boolean);
+    const looksLikeBareStorageRoot =
+      segments.length === 0 ||
+      (segments.length === 1 &&
+        /(?:template-media|whatsapp-template-media)$/i.test(segments[0] || ''));
+    if (looksLikeBareStorageRoot) {
+      throw new ValidationError(
+        'Template header media URL is incomplete — re-upload the header image in Dialog',
+        { format, mediaUrl: link },
+      );
+    }
+  } catch (error) {
+    if (error instanceof ValidationError) {
+      throw error;
+    }
+  }
+
+  return link;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -128,13 +185,7 @@ export function buildHeaderComponentFromTemplate(
       );
     }
 
-    const link = normalizeTemplateMediaPublicUrl(mediaUrlRaw);
-    if (!/^https?:\/\//i.test(link)) {
-      throw new ValidationError('Template header media URL must be a public http(s) URL', {
-        format,
-        mediaUrl: link,
-      });
-    }
+    const link = assertDurableTemplateMediaUrl(mediaUrlRaw, format);
 
     if (format === 'IMAGE') {
       return { type: 'header', parameters: [{ type: 'image', image: { link } }] };

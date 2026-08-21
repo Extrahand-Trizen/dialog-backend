@@ -85,9 +85,21 @@ export class MetaWhatsAppClient {
   async subscribeToWaba(
     metaWabaId: string,
     accessToken: string,
+    options?: { overrideCallbackUri?: string; verifyToken?: string },
   ): Promise<MetaSubscribeResponse> {
+    const overrideCallbackUri = options?.overrideCallbackUri?.trim();
+    const verifyToken = options?.verifyToken?.trim();
+    const body =
+      overrideCallbackUri && verifyToken
+        ? {
+            override_callback_uri: overrideCallbackUri,
+            verify_token: verifyToken,
+          }
+        : undefined;
+
     return this.request<MetaSubscribeResponse>(`/${metaWabaId}/subscribed_apps`, accessToken, {
       method: 'POST',
+      ...(body ? { body: JSON.stringify(body) } : {}),
     });
   }
 

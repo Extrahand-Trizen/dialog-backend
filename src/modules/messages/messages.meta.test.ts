@@ -50,6 +50,23 @@ describe('buildHeaderComponentFromTemplate', () => {
       parameters: [{ type: 'image', image: { link: 'https://cdn.example.com/from-handle.jpg' } }],
     });
   });
+
+  it('rejects ephemeral WhatsApp CDN header links', () => {
+    assert.throws(
+      () =>
+        buildHeaderComponentFromTemplate([
+          {
+            type: 'HEADER',
+            format: 'IMAGE',
+            example: {
+              header_media_url:
+                'https://scontent.whatsapp.net/v/t61.29466-34/640426066_158218923018874',
+            },
+          },
+        ]),
+      /expired WhatsApp CDN/i,
+    );
+  });
 });
 
 describe('sanitizeUrlButtonSuffix', () => {
