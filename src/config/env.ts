@@ -47,6 +47,10 @@ const envSchema = z.object({
    */
   META_WEBHOOK_CALLBACK_URL: z.string().url().optional(),
 
+  /** mock until a white-label telecom adapter is configured. Never exposed to customers. */
+  TELEPHONY_PROVIDER: z.enum(['mock']).default('mock'),
+  TELEPHONY_WEBHOOK_SECRET: z.string().min(8).optional(),
+
   /** MinIO / S3-compatible storage for template header media previews */
   MINIO_ENDPOINT: z.string().url().optional(),
   MINIO_ACCESS_KEY: z.string().min(1).optional(),
@@ -117,12 +121,24 @@ export function validateEnv(): Env {
   return cachedEnv;
 }
 
+/** Neon + node-pg: `channel_binding=require` fails with “credentials for (not available)”. */
+export function normalizePostgresConnectionString(uri: string): string {
+  try {
+    const parsed = new URL(uri);
+    parsed.searchParams.delete('channel_binding');
+    if (!parsed.searchParams.has('sslmode')) {
+      parsed.searchParams.set('sslmode', 'require');
+    }
+    return parsed.toString();
+  } catch {
+    return uri.replace(/([?&])channel_binding=require&?/g, '$1').replace(/[?&]$/, '');
+  }
+}
+
 /** Resolved Postgres URL — respects USE_DEV_DATABASE in non-production environments. */
 export function getPostgresUri(env: Env = validateEnv()): string | undefined {
-  if (env.USE_DEV_DATABASE) {
-    return env.POSTGRES_URI_DEV;
-  }
-  return env.POSTGRES_URI;
+  const raw = env.USE_DEV_DATABASE ? env.POSTGRES_URI_DEV : env.POSTGRES_URI;
+  return raw ? normalizePostgresConnectionString(raw) : undefined;
 }
 
 export function getPostgresConnectionTarget(env: Env = validateEnv()): PostgresConnectionTarget {

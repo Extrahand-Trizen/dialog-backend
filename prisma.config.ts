@@ -7,14 +7,23 @@ function getPrismaDatasourceUrl(): string {
   const useDevDatabase =
     process.env.USE_DEV_DATABASE === 'true' || process.env.USE_DEV_DATABASE === '1';
 
+  let uri: string | undefined;
   if (useDevDatabase) {
     if (process.env.NODE_ENV === 'production') {
       throw new Error('USE_DEV_DATABASE cannot be enabled when NODE_ENV=production');
     }
-    return process.env.POSTGRES_URI_DEV ?? BUILD_TIME_FALLBACK;
+    uri = process.env.POSTGRES_URI_DEV ?? BUILD_TIME_FALLBACK;
+  } else {
+    uri = process.env.POSTGRES_URI ?? BUILD_TIME_FALLBACK;
   }
 
-  return process.env.POSTGRES_URI ?? BUILD_TIME_FALLBACK;
+  try {
+    const parsed = new URL(uri);
+    parsed.searchParams.delete('channel_binding');
+    return parsed.toString();
+  } catch {
+    return uri;
+  }
 }
 
 export default defineConfig({

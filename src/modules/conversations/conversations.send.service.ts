@@ -4,7 +4,12 @@ import { findOutboundMessageByIdempotencyKey } from '../messages/messages.reposi
 import { enqueueStagedMessageSend, stageOutboundTextMessage } from '../messages/messages.service';
 import { sendOrganizationTemplateMessage } from '../messages/messages.send.service';
 import type { SendConversationReplyInput, SendConversationReplyResultDto } from './conversations.schemas';
-import { buildMessagePreview, requireConversationForOrg, upsertConversationForOutbound } from './conversations.repository';
+import {
+  buildMessagePreview,
+  findLatestInboundForContact,
+  requireConversationForOrg,
+  upsertConversationForOutbound,
+} from './conversations.repository';
 
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 
@@ -40,20 +45,26 @@ export async function sendConversationReply(input: {
   // type === 'text' — free-text replies are only allowed within Meta's 24h customer
   // service window after the customer's last inbound message. This is the authoritative
   // server-side gate; the `canSendFreeText` flag on GET /conversations is a UI hint only.
+  const inbound = await findLatestInboundForContact({
+    organizationId: input.organizationId,
+    phoneNumberId: conversation.phoneNumberId,
+    contactPhone: conversation.contactPhone,
+  });
   const windowOpen =
-    conversation.lastInboundAt !== null &&
-    Date.now() - conversation.lastInboundAt.getTime() < TWENTY_FOUR_HOURS_MS;
+    inbound !== null && Date.now() - inbound.createdAt.getTime() < TWENTY_FOUR_HOURS_MS;
 
   if (!windowOpen) {
     throw new ValidationError(
       "Free-text replies are only allowed within 24 hours of the customer's last message. Send an approved template instead.",
       {
         conversationId: input.conversationId,
-        lastInboundAt: conversation.lastInboundAt?.toISOString() ?? null,
+        lastInboundAt: inbound?.createdAt.toISOString() ?? conversation.lastInboundAt?.toISOString() ?? null,
         errorReason: 'OUTSIDE_24H_WINDOW',
       },
     );
   }
+
+  const sendTo = inbound.recipientPhone || conversation.contactPhone;
 
   const existing = await findOutboundMessageByIdempotencyKey({
     organizationId: input.organizationId,
@@ -67,7 +78,7 @@ export async function sendConversationReply(input: {
   const staged = await stageOutboundTextMessage({
     organizationId: input.organizationId,
     phoneNumberId: conversation.phoneNumberId,
-    recipientPhone: conversation.contactPhone,
+    recipientPhone: sendTo,
     correlationId: input.body.idempotencyKey,
     bodyText: input.body.body,
   });

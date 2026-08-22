@@ -20,6 +20,10 @@ export function createConversationsRouter(): Router {
   const router = Router();
 
   router.use(jwtAuth);
+  router.use((_req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+  });
 
   router.get('/', validate(listConversationsQuerySchema, 'query'), asyncHandler(listConversationsHandler));
   router.get(

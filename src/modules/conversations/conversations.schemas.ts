@@ -5,6 +5,7 @@ export const listConversationsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   unreadOnly: z.coerce.boolean().optional(),
+  search: z.string().trim().max(40).optional(),
 });
 export type ListConversationsQuery = z.infer<typeof listConversationsQuerySchema>;
 
@@ -39,6 +40,8 @@ export type ConversationSummaryDto = {
   lastMessageDirection: MessageDirection | null;
   unreadCount: number;
   canSendFreeText: boolean;
+  lastInboundAt: string | null;
+  freeTextWindowExpiresAt: string | null;
 };
 
 export type ConversationThreadMessageDto = {

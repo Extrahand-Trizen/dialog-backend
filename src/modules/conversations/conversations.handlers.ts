@@ -34,6 +34,7 @@ export async function getConversationThreadHandler(req: Request, res: Response):
     limit: result.limit,
     total: result.total,
     totalPages: Math.max(1, Math.ceil(result.total / result.limit)),
+    conversation: result.conversation,
   });
 }
 

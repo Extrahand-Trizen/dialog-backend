@@ -13,6 +13,10 @@ import { createOutboundWebhooksRouter } from '../../modules/outboundWebhooks';
 import { createMediaRouter } from '../../modules/media';
 import { createPlatformAdminRouter } from '../../modules/platformAdmin';
 import { createConversationsRouter } from '../../modules/conversations';
+import { createCampaignsRouter } from '../../modules/campaigns';
+import { createCallsRouter } from '../../modules/calling';
+import { createVirtualNumbersRouter, createVoiceApiRouter } from '../../modules/voice';
+import { createTelephonyWebhookRouter } from '../../modules/voice/telephony.webhook';
 
 export function createV1Router(): Router {
   const router = Router();
@@ -27,6 +31,11 @@ export function createV1Router(): Router {
   router.use('/dashboard', createDashboardRouter());
   router.use('/messages', createMessagesRouter());
   router.use('/conversations', createConversationsRouter());
+  router.use('/campaigns', createCampaignsRouter());
+  router.use('/calls', createCallsRouter());
+  router.use('/virtual-numbers', createVirtualNumbersRouter());
+  router.use('/voice', createVoiceApiRouter());
+  router.use('/webhooks/telephony', createTelephonyWebhookRouter());
   router.use('/webhook-subscriptions', createOutboundWebhooksRouter());
   router.use('/media', createMediaRouter());
   router.use('/internal', createIntegrationsRouter());

@@ -49,7 +49,7 @@ export const AppResponse = {
     res: Response,
     message: string,
     data: T[],
-    pagination: PaginationMeta,
+    pagination: PaginationMeta & Record<string, unknown>,
   ): Response {
     return success(res, message, data, pagination);
   },

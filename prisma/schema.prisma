@@ -31,6 +31,13 @@ model Organization {
   webhookEvents          WebhookEvent[]
   outboundWebhookConfig  OutboundWebhookConfig?
   conversations          Conversation[]
+  campaigns              Campaign[]
+  callContacts           CallContact[]
+  callRecords            CallRecord[]
+  callNotifications      CallNotification[]
+  callingSettings        OrganizationCallingSettings?
+  virtualNumbers         VirtualNumber[]
+  maskedCallSessions     MaskedCallSession[]
 
   @@index([isActive])
   @@index([createdById])
@@ -472,6 +479,63 @@ model Message {
   @@index([metaConversationId])
 }
 
+enum CampaignStatus {
+  SENDING
+  COMPLETED
+}
+
+enum CampaignRecipientStatus {
+  PENDING
+  SENDING
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  DUPLICATE
+}
+
+model Campaign {
+  id             String         @id @default(uuid())
+  organizationId String
+  createdById    String?
+  name           String
+  templateName   String
+  language       String
+  phoneNumberId  String?
+  variables      Json?
+  status         CampaignStatus @default(SENDING)
+  recipientCount Int            @default(0)
+  queuedCount    Int            @default(0)
+  sentCount      Int            @default(0)
+  failedCount    Int            @default(0)
+  duplicateCount Int            @default(0)
+  createdAt      DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime       @updatedAt @db.Timestamptz(3)
+  completedAt    DateTime?      @db.Timestamptz(3)
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  recipients   CampaignRecipient[]
+
+  @@index([organizationId, createdAt(sort: Desc)])
+}
+
+model CampaignRecipient {
+  id         String                   @id @default(uuid())
+  campaignId String
+  phone      String
+  status     CampaignRecipientStatus  @default(PENDING)
+  messageId  String?
+  error      String?
+  createdAt  DateTime                 @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime                 @updatedAt @db.Timestamptz(3)
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, phone])
+  @@index([campaignId, status])
+}
+
 model Conversation {
   id                   String            @id @default(uuid())
   organizationId       String
@@ -550,4 +614,192 @@ model OutboundWebhookConfig {
   updatedBy    User?        @relation("OutboundWebhookUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   @@index([enabled])
+}
+
+// =============================================================================
+// CALLING (virtual numbers + voice)
+// =============================================================================
+
+enum VirtualNumberStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model VirtualNumberInventory {
+  id             String   @id @default(uuid())
+  countryCode    String
+  countryName    String
+  e164           String   @unique
+  locality       String
+  monthlyFeeUsd  Int      @default(8)
+  allocated      Boolean  @default(false)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([countryCode, allocated])
+}
+
+model VirtualNumber {
+  id                    String               @id @default(uuid())
+  organizationId        String
+  inventoryId           String?              @unique
+  e164                  String
+  countryCode           String
+  countryName           String
+  locality              String
+  status                VirtualNumberStatus  @default(ACTIVE)
+  incomingEnabled       Boolean              @default(true)
+  outgoingEnabled       Boolean              @default(true)
+  destinationE164       String?
+  assignedApplication   String?
+  webhookUrl            String?
+  maskingEnabled        Boolean              @default(true)
+  providerNumberId      String?
+  inboundCount          Int                  @default(0)
+  outboundCount         Int                  @default(0)
+  minutesUsed           Int                  @default(0)
+  createdAt             DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime             @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  calls        CallRecord[]
+  maskingSessions MaskedCallSession[]
+
+  @@unique([organizationId, e164])
+  @@index([organizationId, status])
+}
+
+enum CallDirection {
+  OUTGOING
+  INCOMING
+}
+
+enum CallRecordStatus {
+  QUEUED
+  RINGING
+  ACTIVE
+  COMPLETED
+  MISSED
+  REJECTED
+  FAILED
+  BUSY
+  NO_ANSWER
+  CANCELLED
+}
+
+model CallContact {
+  id                 String   @id @default(uuid())
+  organizationId     String
+  name               String
+  phoneE164          String
+  company            String?
+  email              String?
+  avatarInitials     String
+  avatarColor        String   @default("bg-emerald-600")
+  whatsappAvailable  Boolean  @default(true)
+  createdAt          DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  calls        CallRecord[]
+  notifications CallNotification[]
+
+  @@unique([organizationId, phoneE164])
+  @@index([organizationId, name])
+}
+
+model CallRecord {
+  id               String           @id @default(uuid())
+  organizationId   String
+  contactId        String
+  createdByUserId  String?
+  direction        CallDirection    @default(OUTGOING)
+  status           CallRecordStatus @default(QUEUED)
+  durationSeconds  Int?
+  virtualNumber    String
+  virtualNumberId  String?
+  provider         String           @default("TRIZEN")
+  providerCallId   String?
+  providerReference String?
+  callerE164       String?
+  receiverE164     String?
+  recordingReference String?
+  metadata         Json?
+  errorMessage     String?
+  startedAt        DateTime         @default(now()) @db.Timestamptz(3)
+  answeredAt       DateTime?        @db.Timestamptz(3)
+  endedAt          DateTime?        @db.Timestamptz(3)
+  createdAt        DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime         @updatedAt @db.Timestamptz(3)
+
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contact       CallContact    @relation(fields: [contactId], references: [id], onDelete: Restrict)
+  voiceNumber   VirtualNumber? @relation(fields: [virtualNumberId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, startedAt(sort: Desc)])
+  @@index([organizationId, status, startedAt(sort: Desc)])
+  @@index([contactId, startedAt(sort: Desc)])
+  @@index([providerCallId])
+}
+
+model CallNotification {
+  id             String   @id @default(uuid())
+  organizationId String
+  contactId      String
+  callId         String?
+  type           String
+  title          String
+  body           String
+  read           Boolean  @default(false)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contact      CallContact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt(sort: Desc)])
+}
+
+model OrganizationCallingSettings {
+  id                     String   @id @default(uuid())
+  organizationId         String   @unique
+  virtualNumber          String   @default("")
+  callerIdDisplay        String   @default("Organization virtual number")
+  recordCalls            Boolean  @default(false)
+  announceMaskedCalling  Boolean  @default(true)
+  businessHoursOnly      Boolean  @default(false)
+  createdAt              DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+enum MaskedCallSessionStatus {
+  CREATED
+  RINGING
+  ACTIVE
+  COMPLETED
+  FAILED
+  EXPIRED
+  CANCELLED
+}
+
+model MaskedCallSession {
+  id                String                  @id @default(uuid())
+  organizationId    String
+  virtualNumberId   String
+  partyA            String
+  partyB            String
+  providerSessionId String?
+  status            MaskedCallSessionStatus @default(CREATED)
+  metadata          Json?
+  createdAt         DateTime                @default(now()) @db.Timestamptz(3)
+  startedAt         DateTime?               @db.Timestamptz(3)
+  expiresAt         DateTime?
+  endedAt           DateTime?               @db.Timestamptz(3)
+  updatedAt         DateTime                @updatedAt @db.Timestamptz(3)
+
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  virtualNumber VirtualNumber @relation(fields: [virtualNumberId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@index([providerSessionId])
 }

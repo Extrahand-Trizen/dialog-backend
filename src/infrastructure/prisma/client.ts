@@ -31,7 +31,7 @@ function getConnectionString(): string | null {
 
 function getOrCreatePgPool(connectionString: string): Pool {
   const existing = globalStore[GLOBAL_POOL_KEY];
-  if (existing) {
+  if (existing && !existing.ended) {
     return existing;
   }
 
@@ -40,6 +40,7 @@ function getOrCreatePgPool(connectionString: string): Pool {
     max: 10,
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 10_000,
+    ssl: { rejectUnauthorized: true },
   });
 
   pool.on('error', (error) => {
@@ -67,9 +68,12 @@ export function getPrismaClient(): PrismaClient | null {
   }
 
   const existing = globalStore[GLOBAL_PRISMA_KEY];
-  if (existing) {
+  const existingPool = globalStore[GLOBAL_POOL_KEY];
+  if (existing && existingPool && !existingPool.ended && hasRequiredModels(existing)) {
     return existing;
   }
+  delete globalStore[GLOBAL_PRISMA_KEY];
+  delete globalStore[GLOBAL_POOL_KEY];
 
   const connectionString = getConnectionString();
   if (!connectionString) {
@@ -84,6 +88,10 @@ export function getPrismaClient(): PrismaClient | null {
   });
 
   return client;
+}
+
+function hasRequiredModels(client: PrismaClient): boolean {
+  return typeof client.campaign?.findMany === 'function';
 }
 
 export async function connectPrisma(): Promise<boolean> {
