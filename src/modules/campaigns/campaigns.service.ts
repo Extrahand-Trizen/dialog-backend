@@ -161,7 +161,7 @@ async function syncDeliveryFromMessages(organizationId: string, campaignIds: str
       const campaign = campaignById.get(recipient.campaignId);
       const last10 = recipient.phone.slice(-10);
       if (campaign && last10.length === 10) {
-        message = await db.message.findFirst({
+        message = (await db.message.findFirst({
           where: {
             organizationId,
             direction: 'OUTBOUND',
@@ -177,7 +177,7 @@ async function syncDeliveryFromMessages(organizationId: string, campaignIds: str
             recipientPhone: true,
             metaTemplateName: true,
           },
-        });
+        })) ?? undefined;
       }
     }
     if (!message) continue;

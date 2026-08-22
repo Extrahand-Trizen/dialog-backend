@@ -20,8 +20,8 @@ import {
 
 function requireOrg(req: Request): { organizationId: string; userId?: string } {
   const auth = req.auth;
-  if (!auth) {
-    throw new Error('Auth context missing');
+  if (!auth || auth.type === 'platformAdmin') {
+    throw new Error('Organization auth context missing');
   }
   return {
     organizationId: auth.organizationId,
