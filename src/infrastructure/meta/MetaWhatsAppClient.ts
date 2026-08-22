@@ -13,6 +13,7 @@ import type {
   MetaSendMessageResponse,
   MetaSendTemplateComponent,
   MetaSendTemplateRequest,
+  MetaSendTextRequest,
   MetaSubscribeResponse,
   MetaUnsubscribeResponse,
   MetaWabaResponse,
@@ -193,6 +194,17 @@ export class MetaWhatsAppClient {
     metaPhoneNumberId: string,
     accessToken: string,
     body: MetaSendTemplateRequest,
+  ): Promise<MetaSendMessageResponse> {
+    return this.request<MetaSendMessageResponse>(`/${metaPhoneNumberId}/messages`, accessToken, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  async sendTextMessage(
+    metaPhoneNumberId: string,
+    accessToken: string,
+    body: MetaSendTextRequest,
   ): Promise<MetaSendMessageResponse> {
     return this.request<MetaSendMessageResponse>(`/${metaPhoneNumberId}/messages`, accessToken, {
       method: 'POST',

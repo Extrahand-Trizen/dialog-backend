@@ -4,6 +4,7 @@ import {
   updateMessageFromStatusWebhook,
   type MessageStatus,
 } from '../messages/messages.repository';
+import { buildMessagePreview, upsertConversationForInbound } from '../conversations/conversations.repository';
 import {
   mapMessageStatusToWebhookEvent,
   scheduleOutboundWebhook,
@@ -122,15 +123,32 @@ export async function processWebhookEvent(webhookEventId: string): Promise<void>
         continue;
       }
 
-      await createInboundMessageFromWebhook({
+      const inboundMessageType = mapInboundMessageType(inbound.messageType);
+
+      const created = await createInboundMessageFromWebhook({
         organizationId: phone.organizationId,
         phoneNumberId: phone.phoneNumberId,
         metaMessageId: inbound.metaMessageId,
         customerPhone: inbound.customerPhone,
-        messageType: mapInboundMessageType(inbound.messageType),
+        messageType: inboundMessageType,
         bodyText: inbound.bodyText,
         rawPayload: inbound.rawPayload,
       });
+
+      // Only touch the conversation aggregate on a genuinely new message — a Meta webhook
+      // redelivery of the same metaMessageId must not double-increment unreadCount.
+      if (created.created) {
+        await upsertConversationForInbound({
+          organizationId: phone.organizationId,
+          phoneNumberId: phone.phoneNumberId,
+          contactPhone: created.normalizedCustomerPhone,
+          occurredAt: new Date(),
+          preview: buildMessagePreview({
+            type: inboundMessageType,
+            bodyText: inbound.bodyText,
+          }),
+        });
+      }
     }
 
     for (const qualityUpdate of extractPhoneQualityUpdates(payload)) {

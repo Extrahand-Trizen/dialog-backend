@@ -115,6 +115,13 @@ export type MetaSendTemplateRequest = {
   };
 };
 
+export type MetaSendTextRequest = {
+  messaging_product: 'whatsapp';
+  to: string;
+  type: 'text';
+  text: { body: string };
+};
+
 export type MetaSendMessageResponse = {
   messaging_product: string;
   contacts?: { input: string; wa_id: string }[];

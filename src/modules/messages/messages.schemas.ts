@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { MessageType } from '@prisma/client';
 import type { MetaSendTemplateComponent } from '../../infrastructure/meta';
 
 export type MessageSendJobData = {
@@ -95,7 +96,9 @@ export type MessageSendContextDto = {
   organizationId: string;
   correlationId: string | null;
   recipientPhone: string;
-  metaTemplateName: string;
+  type: MessageType;
+  metaTemplateName: string | null;
+  bodyText: string | null;
   language: string;
   templateVersionId: string | null;
   metaComponents: MetaSendTemplateComponent[];

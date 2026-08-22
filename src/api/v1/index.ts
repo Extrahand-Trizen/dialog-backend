@@ -12,6 +12,7 @@ import { createIntegrationsRouter } from '../../modules/integrations';
 import { createOutboundWebhooksRouter } from '../../modules/outboundWebhooks';
 import { createMediaRouter } from '../../modules/media';
 import { createPlatformAdminRouter } from '../../modules/platformAdmin';
+import { createConversationsRouter } from '../../modules/conversations';
 
 export function createV1Router(): Router {
   const router = Router();
@@ -25,6 +26,7 @@ export function createV1Router(): Router {
   router.use('/events', createNotificationsRouter());
   router.use('/dashboard', createDashboardRouter());
   router.use('/messages', createMessagesRouter());
+  router.use('/conversations', createConversationsRouter());
   router.use('/webhook-subscriptions', createOutboundWebhooksRouter());
   router.use('/media', createMediaRouter());
   router.use('/internal', createIntegrationsRouter());

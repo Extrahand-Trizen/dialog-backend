@@ -30,6 +30,7 @@ model Organization {
   messages               Message[]
   webhookEvents          WebhookEvent[]
   outboundWebhookConfig  OutboundWebhookConfig?
+  conversations          Conversation[]
 
   @@index([isActive])
   @@index([createdById])
@@ -191,6 +192,7 @@ model PhoneNumber {
   updatedBy         User?              @relation("PhoneNumberUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
   messages          Message[]
   notificationRules NotificationRule[]
+  conversations     Conversation[]
 
   @@index([whatsAppAccountId, isDefault])
   @@index([whatsAppAccountId, status])
@@ -465,8 +467,29 @@ model Message {
   @@index([organizationId, createdAt(sort: Desc)])
   @@index([organizationId, recipientPhone])
   @@index([organizationId, status, createdAt(sort: Desc)])
+  @@index([organizationId, phoneNumberId, recipientPhone, createdAt])
   @@index([correlationId])
   @@index([metaConversationId])
+}
+
+model Conversation {
+  id                   String            @id @default(uuid())
+  organizationId       String
+  phoneNumberId        String
+  contactPhone         String
+  lastMessageAt        DateTime          @db.Timestamptz(3)
+  lastMessagePreview   String?
+  lastMessageDirection MessageDirection?
+  lastInboundAt        DateTime?         @db.Timestamptz(3)
+  unreadCount          Int               @default(0)
+  createdAt            DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime          @updatedAt @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  phoneNumber  PhoneNumber  @relation(fields: [phoneNumberId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, phoneNumberId, contactPhone])
+  @@index([organizationId, lastMessageAt(sort: Desc)])
 }
 
 // =============================================================================

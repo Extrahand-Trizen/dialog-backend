@@ -147,11 +147,15 @@ export async function createInboundMessageFromWebhook(input: {
   messageType: MessageType;
   bodyText?: string;
   rawPayload: object;
-}): Promise<{ messageId: string; created: boolean }> {
+}): Promise<{ messageId: string; created: boolean; normalizedCustomerPhone: string }> {
   const prisma = getPrismaClient();
   if (!prisma) {
     throw new InternalServerError('Database not configured', 'DATABASE_NOT_CONFIGURED');
   }
+
+  // Defensive: Meta's `from` is already digits-only, but strip stray `+`/whitespace so an
+  // inbound message can never key to a different Conversation row than its outbound replies.
+  const normalizedCustomerPhone = input.customerPhone.replace(/\D/g, '') || input.customerPhone;
 
   const existing = await prisma.message.findUnique({
     where: { metaMessageId: input.metaMessageId },
@@ -159,7 +163,7 @@ export async function createInboundMessageFromWebhook(input: {
   });
 
   if (existing) {
-    return { messageId: existing.id, created: false };
+    return { messageId: existing.id, created: false, normalizedCustomerPhone };
   }
 
   const row = await prisma.message.create({
@@ -167,7 +171,7 @@ export async function createInboundMessageFromWebhook(input: {
       organizationId: input.organizationId,
       phoneNumberId: input.phoneNumberId,
       direction: 'INBOUND',
-      recipientPhone: input.customerPhone,
+      recipientPhone: normalizedCustomerPhone,
       type: input.messageType,
       metaMessageId: input.metaMessageId,
       bodyText: input.bodyText,
@@ -178,7 +182,7 @@ export async function createInboundMessageFromWebhook(input: {
     select: { id: true },
   });
 
-  return { messageId: row.id, created: true };
+  return { messageId: row.id, created: true, normalizedCustomerPhone };
 }
 
 export async function createOutboundTemplateMessage(
@@ -207,6 +211,34 @@ export async function createOutboundTemplateMessage(
   return { messageId: row.id };
 }
 
+export async function createOutboundTextMessage(input: {
+  organizationId: string;
+  phoneNumberId: string;
+  recipientPhone: string;
+  correlationId: string;
+  bodyText: string;
+}): Promise<{ messageId: string }> {
+  const prisma = getPrismaClient();
+  if (!prisma) {
+    throw new InternalServerError('Database not configured', 'DATABASE_NOT_CONFIGURED');
+  }
+
+  const row = await prisma.message.create({
+    data: {
+      organizationId: input.organizationId,
+      phoneNumberId: input.phoneNumberId,
+      correlationId: input.correlationId,
+      recipientPhone: input.recipientPhone,
+      type: 'TEXT',
+      bodyText: input.bodyText,
+      status: 'QUEUED',
+    },
+    select: { id: true },
+  });
+
+  return { messageId: row.id };
+}
+
 export async function findMessageSendContext(messageId: string): Promise<MessageSendContextDto | null> {
   const prisma = getPrismaClient();
   if (!prisma) {
@@ -220,7 +252,9 @@ export async function findMessageSendContext(messageId: string): Promise<Message
       organizationId: true,
       correlationId: true,
       recipientPhone: true,
+      type: true,
       metaTemplateName: true,
+      bodyText: true,
       components: true,
       templateVersionId: true,
       phoneNumberId: true,
@@ -244,7 +278,13 @@ export async function findMessageSendContext(messageId: string): Promise<Message
     },
   });
 
-  if (!row || !row.metaTemplateName || !row.phoneNumber) {
+  if (!row || !row.phoneNumber) {
+    return null;
+  }
+  if (row.type === 'TEMPLATE' && !row.metaTemplateName) {
+    return null;
+  }
+  if (row.type === 'TEXT' && !row.bodyText) {
     return null;
   }
 
@@ -253,7 +293,9 @@ export async function findMessageSendContext(messageId: string): Promise<Message
     organizationId: row.organizationId,
     correlationId: row.correlationId,
     recipientPhone: row.recipientPhone,
+    type: row.type,
     metaTemplateName: row.metaTemplateName,
+    bodyText: row.bodyText,
     language: row.templateVersion?.template.language ?? 'en',
     templateVersionId: row.templateVersionId ?? null,
     metaComponents: (row.components ?? []) as MetaSendTemplateComponent[],

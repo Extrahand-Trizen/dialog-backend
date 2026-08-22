@@ -5,7 +5,7 @@ import type { ListMessagesQuery, SendTemplateMessageInput } from './messages.sch
 import { getOrganizationMessage, listOrganizationMessages } from './messages.read.service';
 import { sendOrganizationTemplateMessage } from './messages.send.service';
 
-function requireJwtContext(req: Request): { organizationId: string } {
+export function requireJwtContext(req: Request): { organizationId: string } {
   const auth = req.auth;
   if (!auth || auth.type !== 'jwt') {
     throw new Error('JWT context missing after auth middleware');
@@ -32,7 +32,7 @@ export async function getMessageHandler(req: Request, res: Response): Promise<vo
   AppResponse.success(res, 'Message retrieved', message);
 }
 
-function requireSendContext(req: Request): {
+export function requireSendContext(req: Request): {
   organizationId: string;
   correlationId: string;
 } {

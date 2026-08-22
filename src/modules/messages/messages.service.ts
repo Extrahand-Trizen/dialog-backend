@@ -15,6 +15,7 @@ import {
 } from './messages.meta';
 import {
   createOutboundTemplateMessage,
+  createOutboundTextMessage,
   findLatestEventPayloadByCorrelationIdForOrg,
   findMessageCorrelationIdForOrg,
   findTemplateVersionComponentsForOrg,
@@ -161,6 +162,20 @@ export async function stageOutboundTemplateMessage(
   });
 }
 
+export async function stageOutboundTextMessage(input: {
+  organizationId: string;
+  phoneNumberId: string;
+  recipientPhone: string;
+  correlationId: string;
+  bodyText: string;
+}): Promise<CreatedOutboundMessageDto> {
+  const recipientPhone = normalizeRecipientPhone(input.recipientPhone);
+  return createOutboundTextMessage({
+    ...input,
+    recipientPhone,
+  });
+}
+
 export async function enqueueStagedMessageSend(
   messageId: string,
   correlationId?: string,
@@ -244,71 +259,77 @@ export async function sendOutboundMessage(messageId: string): Promise<void> {
 
   await acquireWhatsAppSendSlot(context.metaPhoneNumberId);
 
-  let metaComponents: MetaSendTemplateComponent[];
-  try {
-    metaComponents = await repairOutboundTemplateComponents(
-      context.organizationId,
-      messageId,
-      context.metaComponents,
-      context.templateVersionId,
-    );
-
-    // Final guard: never call Meta with a media-header template missing IMAGE/VIDEO/DOCUMENT.
-    if (context.templateVersionId) {
-      const version = await findTemplateVersionComponentsForOrg(
+  let metaComponents: MetaSendTemplateComponent[] = context.metaComponents;
+  if (context.type === 'TEMPLATE') {
+    try {
+      metaComponents = await repairOutboundTemplateComponents(
         context.organizationId,
+        messageId,
+        context.metaComponents,
         context.templateVersionId,
       );
-      if (
-        version?.components &&
-        templateRequiresMediaHeader(version.components) &&
-        !outboundHasMediaHeader(metaComponents)
-      ) {
-        throw new ValidationError(
-          'Template requires IMAGE/VIDEO/DOCUMENT header but outbound components are missing it (Meta #132012)',
-          {
-            messageId,
-            templateVersionId: context.templateVersionId,
-            stagedTypes: metaComponents.map((component) => component.type),
-          },
+
+      // Final guard: never call Meta with a media-header template missing IMAGE/VIDEO/DOCUMENT.
+      if (context.templateVersionId) {
+        const version = await findTemplateVersionComponentsForOrg(
+          context.organizationId,
+          context.templateVersionId,
         );
+        if (
+          version?.components &&
+          templateRequiresMediaHeader(version.components) &&
+          !outboundHasMediaHeader(metaComponents)
+        ) {
+          throw new ValidationError(
+            'Template requires IMAGE/VIDEO/DOCUMENT header but outbound components are missing it (Meta #132012)',
+            {
+              messageId,
+              templateVersionId: context.templateVersionId,
+              stagedTypes: metaComponents.map((component) => component.type),
+            },
+          );
+        }
       }
-    }
-  } catch (error) {
-    if (isRetryableSendError(error)) {
+    } catch (error) {
+      if (isRetryableSendError(error)) {
+        throw error;
+      }
+      const message = error instanceof Error ? error.message : 'Template component repair failed';
+      const errorCode =
+        error instanceof ExternalServiceError ? error.errorCode : 'TEMPLATE_COMPONENT_REPAIR_FAILED';
+      const failed = await markMessageFailed({
+        messageId,
+        errorCode,
+        errorMessage: message,
+      });
+      void scheduleOutboundWebhook({
+        organizationId: failed.organizationId,
+        messageId,
+        event: 'message.failed',
+      });
       throw error;
     }
-    const message = error instanceof Error ? error.message : 'Template component repair failed';
-    const errorCode =
-      error instanceof ExternalServiceError ? error.errorCode : 'TEMPLATE_COMPONENT_REPAIR_FAILED';
-    const failed = await markMessageFailed({
-      messageId,
-      errorCode,
-      errorMessage: message,
-    });
-    void scheduleOutboundWebhook({
-      organizationId: failed.organizationId,
-      messageId,
-      event: 'message.failed',
-    });
-    throw error;
   }
 
   try {
-    const response = await metaClient.sendTemplateMessage(
-      context.metaPhoneNumberId,
-      accessToken,
-      {
-        messaging_product: 'whatsapp',
-        to: context.recipientPhone,
-        type: 'template',
-        template: {
-          name: context.metaTemplateName,
-          language: { code: context.language },
-          ...(metaComponents.length > 0 ? { components: metaComponents } : {}),
-        },
-      },
-    );
+    const response =
+      context.type === 'TEXT'
+        ? await metaClient.sendTextMessage(context.metaPhoneNumberId, accessToken, {
+            messaging_product: 'whatsapp',
+            to: context.recipientPhone,
+            type: 'text',
+            text: { body: context.bodyText ?? '' },
+          })
+        : await metaClient.sendTemplateMessage(context.metaPhoneNumberId, accessToken, {
+            messaging_product: 'whatsapp',
+            to: context.recipientPhone,
+            type: 'template',
+            template: {
+              name: context.metaTemplateName ?? '',
+              language: { code: context.language },
+              ...(metaComponents.length > 0 ? { components: metaComponents } : {}),
+            },
+          });
 
     const metaMessageId = response.messages?.[0]?.id;
     if (!metaMessageId) {

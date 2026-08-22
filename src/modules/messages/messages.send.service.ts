@@ -2,7 +2,8 @@ import { ValidationError } from '../../shared/errors/AppError';
 import { scheduleOutboundWebhook } from '../outboundWebhooks';
 import { findApprovedTemplateForSend } from '../templates/templates.repository';
 import { resolvePhoneForNotification } from '../whatsapp/whatsapp.service';
-import { buildTemplateComponentsFromVariables } from './messages.meta';
+import { buildMessagePreview, upsertConversationForOutbound } from '../conversations/conversations.repository';
+import { buildTemplateComponentsFromVariables, normalizeRecipientPhone } from './messages.meta';
 import { findOutboundMessageByIdempotencyKey } from './messages.repository';
 import {
   enqueueStagedMessageSend,
@@ -75,6 +76,14 @@ export async function sendOrganizationTemplateMessage(input: {
   });
 
   await enqueueStagedMessageSend(staged.messageId, input.correlationId);
+
+  await upsertConversationForOutbound({
+    organizationId: input.organizationId,
+    phoneNumberId: phone.id,
+    contactPhone: normalizeRecipientPhone(input.body.to),
+    occurredAt: new Date(),
+    preview: buildMessagePreview({ type: 'TEMPLATE', metaTemplateName: input.body.template }),
+  });
 
   void scheduleOutboundWebhook({
     organizationId: input.organizationId,

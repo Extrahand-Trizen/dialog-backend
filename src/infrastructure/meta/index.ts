@@ -15,5 +15,6 @@ export type {
   MetaSendTemplateComponent,
   MetaSendTemplateParameter,
   MetaSendTemplateRequest,
+  MetaSendTextRequest,
   MetaWabaResponse,
 } from './meta.types';
