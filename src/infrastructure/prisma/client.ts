@@ -91,7 +91,10 @@ export function getPrismaClient(): PrismaClient | null {
 }
 
 function hasRequiredModels(client: PrismaClient): boolean {
-  return typeof client.campaign?.findMany === 'function';
+  return (
+    typeof client.campaign?.findMany === 'function' &&
+    typeof client.conversation?.findUnique === 'function'
+  );
 }
 
 export async function connectPrisma(): Promise<boolean> {

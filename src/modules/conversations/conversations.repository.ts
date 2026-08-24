@@ -351,7 +351,9 @@ export async function listConversationsByOrganization(input: {
     throw new InternalServerError('Database not configured', 'DATABASE_NOT_CONFIGURED');
   }
 
-  await syncConversationsFromRecentMessages(input.organizationId);
+  if (!input.search) {
+    await syncConversationsFromRecentMessages(input.organizationId);
+  }
 
   const searchDigits = input.search ? phoneDigits(input.search) : '';
   const where = {
