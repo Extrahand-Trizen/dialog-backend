@@ -3,13 +3,16 @@ import { ValidationError } from '../../shared/errors/AppError';
 import {
   buildTemplateComponentsFromMapping,
   coerceTemplateComponentsArray,
+  normalizeRecipientPhone,
   outboundHasMediaHeader,
+  renderTemplateBodyTextFromComponents,
   templateRequiresMediaHeader,
 } from '../messages/messages.meta';
 import {
   enqueueStagedMessageSend,
   stageOutboundTemplateMessage,
 } from '../messages/messages.service';
+import { buildMessagePreview, upsertConversationForOutbound } from '../conversations/conversations.repository';
 import { getEnabledRuleForEvent } from '../notificationRules/notificationRules.service';
 import { resolveTemplateForSend } from '../templates/templates.service';
 import { resolvePhoneForNotification } from '../whatsapp/whatsapp.service';
@@ -142,6 +145,8 @@ export async function processEventIngest(
       return;
     }
 
+    const bodyText = renderTemplateBodyTextFromComponents(template.components, metaComponents);
+
     const { messageId } = await stageOutboundTemplateMessage({
       organizationId: event.organizationId,
       phoneNumberId: phone.id,
@@ -150,6 +155,7 @@ export async function processEventIngest(
       templateVersionId: template.templateVersionId,
       metaTemplateName: template.metaTemplateName,
       metaComponents,
+      bodyText,
     });
 
     await createNotificationExecution({
@@ -165,6 +171,14 @@ export async function processEventIngest(
     });
 
     await enqueueStagedMessageSend(messageId, event.correlationId);
+
+    await upsertConversationForOutbound({
+      organizationId: event.organizationId,
+      phoneNumberId: phone.id,
+      contactPhone: normalizeRecipientPhone(event.recipientPhone),
+      occurredAt: new Date(),
+      preview: buildMessagePreview({ type: 'TEMPLATE', metaTemplateName: template.metaTemplateName, bodyText }),
+    });
 
     await updateEventIngestStatus({
       eventIngestId,

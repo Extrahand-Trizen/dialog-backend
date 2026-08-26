@@ -3,7 +3,11 @@ import { scheduleOutboundWebhook } from '../outboundWebhooks';
 import { findApprovedTemplateForSend } from '../templates/templates.repository';
 import { resolvePhoneForNotification } from '../whatsapp/whatsapp.service';
 import { buildMessagePreview, upsertConversationForOutbound } from '../conversations/conversations.repository';
-import { buildTemplateComponentsFromVariables, normalizeRecipientPhone } from './messages.meta';
+import {
+  buildTemplateComponentsFromVariables,
+  normalizeRecipientPhone,
+  renderTemplateBodyTextFromComponents,
+} from './messages.meta';
 import { findOutboundMessageByIdempotencyKey } from './messages.repository';
 import {
   enqueueStagedMessageSend,
@@ -64,6 +68,7 @@ export async function sendOrganizationTemplateMessage(input: {
     input.body.variables,
     template.components,
   );
+  const bodyText = renderTemplateBodyTextFromComponents(template.components, metaComponents);
 
   const staged = await stageOutboundTemplateMessage({
     organizationId: input.organizationId,
@@ -73,6 +78,7 @@ export async function sendOrganizationTemplateMessage(input: {
     templateVersionId: template.templateVersionId,
     metaTemplateName: template.metaTemplateName,
     metaComponents,
+    bodyText,
   });
 
   await enqueueStagedMessageSend(staged.messageId, input.correlationId);
@@ -82,7 +88,7 @@ export async function sendOrganizationTemplateMessage(input: {
     phoneNumberId: phone.id,
     contactPhone: normalizeRecipientPhone(input.body.to),
     occurredAt: new Date(),
-    preview: buildMessagePreview({ type: 'TEMPLATE', metaTemplateName: input.body.template }),
+    preview: buildMessagePreview({ type: 'TEMPLATE', metaTemplateName: input.body.template, bodyText }),
   });
 
   void scheduleOutboundWebhook({

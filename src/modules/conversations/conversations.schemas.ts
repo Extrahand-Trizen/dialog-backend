@@ -44,6 +44,12 @@ export type ConversationSummaryDto = {
   freeTextWindowExpiresAt: string | null;
 };
 
+export type ConversationThreadButtonDto = {
+  label: string;
+  url?: string;
+  phoneNumber?: string;
+};
+
 export type ConversationThreadMessageDto = {
   id: string;
   direction: MessageDirection;
@@ -52,6 +58,7 @@ export type ConversationThreadMessageDto = {
   bodyText: string | null;
   metaTemplateName: string | null;
   components: unknown;
+  buttons: ConversationThreadButtonDto[];
   errorCode: string | null;
   errorMessage: string | null;
   createdAt: string;

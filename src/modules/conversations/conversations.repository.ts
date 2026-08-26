@@ -1,5 +1,6 @@
 import { getPrismaClient } from '../../infrastructure/prisma/client';
 import { InternalServerError, NotFoundError } from '../../shared/errors/AppError';
+import { resolveTemplateButtonsFromComponents } from '../messages/messages.meta';
 import type { MessageDirection } from '@prisma/client';
 import type { ConversationSummaryDto, ConversationThreadMessageDto } from './conversations.schemas';
 
@@ -11,9 +12,6 @@ export function buildMessagePreview(input: {
   bodyText?: string | null;
   metaTemplateName?: string | null;
 }): string | null {
-  if (input.type === 'TEMPLATE') {
-    return input.metaTemplateName ? `Template: ${input.metaTemplateName}` : 'Template message';
-  }
   if (input.bodyText && input.bodyText.trim().length > 0) {
     const trimmed = input.bodyText.trim();
     return trimmed.length > PREVIEW_MAX_LENGTH ? `${trimmed.slice(0, PREVIEW_MAX_LENGTH)}…` : trimmed;
@@ -29,6 +27,8 @@ export function buildMessagePreview(input: {
       return '🎤 Audio';
     case 'INTERACTIVE':
       return '[Interactive message]';
+    case 'TEMPLATE':
+      return input.metaTemplateName ? `Template: ${input.metaTemplateName}` : 'Template message';
     default:
       return '[Message]';
   }
@@ -166,95 +166,30 @@ export async function upsertConversationForOutbound(input: {
     throw new InternalServerError('Database not configured', 'DATABASE_NOT_CONFIGURED');
   }
 
-  await prisma.conversation.upsert({
-    where: {
-      organizationId_phoneNumberId_contactPhone: {
-        organizationId: input.organizationId,
-        phoneNumberId: input.phoneNumberId,
-        contactPhone: input.contactPhone,
+  // Match the same way inbound does (last-10-digits) so a contact stored with a
+  // different country-code prefix format doesn't split into a second conversation.
+  const last10 = last10Digits(input.contactPhone);
+  const matches = last10
+    ? await prisma.conversation.findMany({
+        where: {
+          organizationId: input.organizationId,
+          phoneNumberId: input.phoneNumberId,
+          contactPhone: { endsWith: last10 },
+        },
+        select: { id: true },
+        orderBy: { lastMessageAt: 'desc' },
+      })
+    : [];
+
+  if (matches.length > 0) {
+    await prisma.conversation.update({
+      where: { id: matches[0].id },
+      data: {
+        lastMessageAt: input.occurredAt,
+        lastMessageDirection: 'OUTBOUND',
+        lastMessagePreview: input.preview,
       },
-    },
-    create: {
-      organizationId: input.organizationId,
-      phoneNumberId: input.phoneNumberId,
-      contactPhone: input.contactPhone,
-      lastMessageAt: input.occurredAt,
-      lastMessageDirection: 'OUTBOUND',
-      lastMessagePreview: input.preview,
-      unreadCount: 0,
-    },
-    update: {
-      lastMessageAt: input.occurredAt,
-      lastMessageDirection: 'OUTBOUND',
-      lastMessagePreview: input.preview,
-    },
-  });
-}
-
-async function syncConversationsFromRecentMessages(organizationId: string): Promise<void> {
-  const prisma = getPrismaClient();
-  if (!prisma) return;
-
-  const recent = await prisma.message.findMany({
-    where: { organizationId, recipientPhone: { not: '' } },
-    orderBy: { createdAt: 'desc' },
-    take: 250,
-    select: {
-      phoneNumberId: true,
-      recipientPhone: true,
-      createdAt: true,
-      direction: true,
-      type: true,
-      bodyText: true,
-      metaTemplateName: true,
-    },
-  });
-
-  const seen = new Set<string>();
-  for (const message of recent) {
-    const phone = phoneDigits(message.recipientPhone) || message.recipientPhone;
-    const key = `${message.phoneNumberId}:${phone}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-
-    await upsertConversationFromMessage({
-      organizationId,
-      phoneNumberId: message.phoneNumberId,
-      contactPhone: phone,
-      occurredAt: message.createdAt,
-      direction: message.direction,
-      preview: buildMessagePreview({
-        type: message.type,
-        bodyText: message.bodyText,
-        metaTemplateName: message.metaTemplateName,
-      }),
     });
-  }
-}
-
-async function upsertConversationFromMessage(input: {
-  organizationId: string;
-  phoneNumberId: string;
-  contactPhone: string;
-  occurredAt: Date;
-  direction: MessageDirection;
-  preview: string | null;
-}): Promise<void> {
-  const prisma = getPrismaClient();
-  if (!prisma) return;
-
-    const existing = await prisma.conversation.findUnique({
-    where: {
-      organizationId_phoneNumberId_contactPhone: {
-        organizationId: input.organizationId,
-        phoneNumberId: input.phoneNumberId,
-        contactPhone: input.contactPhone,
-      },
-    },
-    select: { lastMessageAt: true },
-  });
-
-  if (existing && existing.lastMessageAt >= input.occurredAt) {
     return;
   }
 
@@ -271,16 +206,14 @@ async function upsertConversationFromMessage(input: {
       phoneNumberId: input.phoneNumberId,
       contactPhone: input.contactPhone,
       lastMessageAt: input.occurredAt,
-      lastMessageDirection: input.direction,
+      lastMessageDirection: 'OUTBOUND',
       lastMessagePreview: input.preview,
-      lastInboundAt: input.direction === 'INBOUND' ? input.occurredAt : null,
       unreadCount: 0,
     },
     update: {
       lastMessageAt: input.occurredAt,
-      lastMessageDirection: input.direction,
+      lastMessageDirection: 'OUTBOUND',
       lastMessagePreview: input.preview,
-      ...(input.direction === 'INBOUND' ? { lastInboundAt: input.occurredAt } : {}),
     },
   });
 }
@@ -349,10 +282,6 @@ export async function listConversationsByOrganization(input: {
   const prisma = getPrismaClient();
   if (!prisma) {
     throw new InternalServerError('Database not configured', 'DATABASE_NOT_CONFIGURED');
-  }
-
-  if (!input.search) {
-    await syncConversationsFromRecentMessages(input.organizationId);
   }
 
   const searchDigits = input.search ? phoneDigits(input.search) : '';
@@ -432,6 +361,18 @@ export async function markConversationRead(
   });
 }
 
+/** Total unread conversations across the org — powers the sidebar nav badge. */
+export async function countUnreadConversations(organizationId: string): Promise<number> {
+  const prisma = getPrismaClient();
+  if (!prisma) {
+    throw new InternalServerError('Database not configured', 'DATABASE_NOT_CONFIGURED');
+  }
+
+  return prisma.conversation.count({
+    where: { organizationId, unreadCount: { gt: 0 } },
+  });
+}
+
 const threadMessageSelect = {
   id: true,
   direction: true,
@@ -447,6 +388,7 @@ const threadMessageSelect = {
   deliveredAt: true,
   readAt: true,
   failedAt: true,
+  templateVersion: { select: { components: true } },
 } as const;
 
 type ThreadMessageRow = {
@@ -464,6 +406,7 @@ type ThreadMessageRow = {
   deliveredAt: Date | null;
   readAt: Date | null;
   failedAt: Date | null;
+  templateVersion: { components: unknown } | null;
 };
 
 function toThreadMessageDto(row: ThreadMessageRow): ConversationThreadMessageDto {
@@ -475,6 +418,7 @@ function toThreadMessageDto(row: ThreadMessageRow): ConversationThreadMessageDto
     bodyText: row.bodyText,
     metaTemplateName: row.metaTemplateName,
     components: row.components,
+    buttons: resolveTemplateButtonsFromComponents(row.templateVersion?.components, row.components),
     errorCode: row.errorCode,
     errorMessage: row.errorMessage,
     createdAt: row.createdAt.toISOString(),

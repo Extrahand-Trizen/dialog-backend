@@ -199,6 +199,115 @@ export function buildHeaderComponentFromTemplate(
   return null;
 }
 
+/**
+ * Renders the final customer-facing template body text (placeholders substituted)
+ * so the Inbox can show what was actually sent, not just "Template: name". Works from
+ * the already-resolved BODY parameter values — the same shape whether they came from
+ * a fresh send (`MetaSendTemplateComponent[]`) or a stored `Message.components` row.
+ */
+export function renderTemplateBodyTextFromComponents(
+  templateComponents: unknown,
+  sentComponents: unknown,
+): string | null {
+  const definition = coerceTemplateComponentsArray(templateComponents);
+  const bodyDefinition = definition?.find(
+    (raw) => isRecord(raw) && typeof raw.type === 'string' && raw.type.toUpperCase() === 'BODY',
+  ) as Record<string, unknown> | undefined;
+  const text = bodyDefinition && typeof bodyDefinition.text === 'string' ? bodyDefinition.text : '';
+  if (!text) {
+    return null;
+  }
+
+  const sent = coerceTemplateComponentsArray(sentComponents) ?? [];
+  const bodySent = sent.find(
+    (raw) => isRecord(raw) && typeof raw.type === 'string' && raw.type.toLowerCase() === 'body',
+  ) as Record<string, unknown> | undefined;
+  const params = Array.isArray(bodySent?.parameters) ? bodySent.parameters : [];
+  const values = params.map((param) =>
+    isRecord(param) && typeof param.text === 'string' ? param.text : undefined,
+  );
+
+  if (!/\{\{\d+\}\}/.test(text)) {
+    return text;
+  }
+
+  return text.replace(/\{\{(\d+)\}\}/g, (match, indexStr: string) => {
+    const index = Number.parseInt(indexStr, 10);
+    return values[index - 1] ?? match;
+  });
+}
+
+export type RenderedTemplateButton = {
+  label: string;
+  url?: string;
+  phoneNumber?: string;
+};
+
+/**
+ * Resolves the buttons actually shown for a sent template, using the button LABELS from
+ * the template definition (not stored on Message) combined with the dynamic URL suffix
+ * that was actually sent (stored on Message.components), so a URL button renders a real,
+ * clickable link matching what the customer received on WhatsApp.
+ */
+export function resolveTemplateButtonsFromComponents(
+  templateComponents: unknown,
+  sentComponents: unknown,
+): RenderedTemplateButton[] {
+  const definition = coerceTemplateComponentsArray(templateComponents);
+  const buttonsDefinition = definition?.find(
+    (raw) => isRecord(raw) && typeof raw.type === 'string' && raw.type.toUpperCase() === 'BUTTONS',
+  ) as Record<string, unknown> | undefined;
+  const definedButtons = Array.isArray(buttonsDefinition?.buttons) ? buttonsDefinition.buttons : [];
+  if (definedButtons.length === 0) {
+    return [];
+  }
+
+  const sent = coerceTemplateComponentsArray(sentComponents) ?? [];
+  const sentButtonByIndex = new Map<number, Record<string, unknown>>();
+  for (const raw of sent) {
+    if (!isRecord(raw) || typeof raw.type !== 'string' || raw.type.toLowerCase() !== 'button') continue;
+    const index = Number.parseInt(String(raw.index ?? ''), 10);
+    if (Number.isFinite(index)) {
+      sentButtonByIndex.set(index, raw);
+    }
+  }
+
+  const results: RenderedTemplateButton[] = [];
+
+  definedButtons.forEach((raw, index) => {
+    if (!isRecord(raw)) return;
+    const label = typeof raw.text === 'string' ? raw.text : '';
+    if (!label) return;
+    const buttonType = typeof raw.type === 'string' ? raw.type.toUpperCase() : '';
+
+    if (buttonType === 'URL') {
+      const baseUrl = typeof raw.url === 'string' ? raw.url : '';
+      if (!baseUrl) return;
+      if (!/\{\{\d+\}\}/.test(baseUrl)) {
+        results.push({ label, url: baseUrl });
+        return;
+      }
+      const sentButton = sentButtonByIndex.get(index);
+      const suffixParam = Array.isArray(sentButton?.parameters) ? sentButton.parameters[0] : undefined;
+      const suffix = isRecord(suffixParam) && typeof suffixParam.text === 'string' ? suffixParam.text : '';
+      if (!suffix) return;
+      results.push({ label, url: baseUrl.replace(/\{\{\d+\}\}/, suffix) });
+      return;
+    }
+
+    if (buttonType === 'PHONE_NUMBER') {
+      const phoneNumber = typeof raw.phone_number === 'string' ? raw.phone_number : '';
+      if (phoneNumber) results.push({ label, phoneNumber });
+      return;
+    }
+
+    // QUICK_REPLY and anything else — informational label only, no real link to follow here.
+    results.push({ label });
+  });
+
+  return results;
+}
+
 export function coerceTemplateComponentsArray(value: unknown): unknown[] | null {
   if (Array.isArray(value)) {
     return value;

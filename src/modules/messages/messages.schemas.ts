@@ -64,6 +64,7 @@ export type OutboundTemplateMessageInput = {
   templateVersionId: string;
   metaTemplateName: string;
   metaComponents: MetaSendTemplateComponent[];
+  bodyText?: string | null;
 };
 
 export type CreatedOutboundMessageDto = {

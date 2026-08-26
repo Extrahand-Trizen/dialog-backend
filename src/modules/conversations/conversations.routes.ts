@@ -11,6 +11,7 @@ import {
 } from './conversations.schemas';
 import {
   getConversationThreadHandler,
+  getUnreadConversationsCountHandler,
   listConversationsHandler,
   markConversationReadHandler,
   sendConversationReplyHandler,
@@ -25,6 +26,7 @@ export function createConversationsRouter(): Router {
     next();
   });
 
+  router.get('/unread-count', asyncHandler(getUnreadConversationsCountHandler));
   router.get('/', validate(listConversationsQuerySchema, 'query'), asyncHandler(listConversationsHandler));
   router.get(
     '/:id/messages',

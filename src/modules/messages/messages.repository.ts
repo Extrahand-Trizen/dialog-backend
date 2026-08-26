@@ -204,6 +204,7 @@ export async function createOutboundTemplateMessage(
       metaTemplateName: input.metaTemplateName,
       status: 'QUEUED',
       components: input.metaComponents as Prisma.InputJsonValue,
+      bodyText: input.bodyText ?? null,
     },
     select: { id: true },
   });

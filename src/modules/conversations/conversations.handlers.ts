@@ -8,8 +8,14 @@ import type {
   SendConversationReplyInput,
 } from './conversations.schemas';
 import { getConversationThread, listOrganizationConversations } from './conversations.read.service';
-import { markConversationRead } from './conversations.repository';
+import { countUnreadConversations, markConversationRead } from './conversations.repository';
 import { sendConversationReply } from './conversations.send.service';
+
+export async function getUnreadConversationsCountHandler(req: Request, res: Response): Promise<void> {
+  const { organizationId } = requireJwtContext(req);
+  const unreadCount = await countUnreadConversations(organizationId);
+  AppResponse.success(res, 'Unread conversation count retrieved', { unreadCount });
+}
 
 export async function listConversationsHandler(req: Request, res: Response): Promise<void> {
   const { organizationId } = requireJwtContext(req);
