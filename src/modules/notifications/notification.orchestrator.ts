@@ -30,6 +30,12 @@ export async function processEventIngest(
   const event = await requireEventIngestById(eventIngestId);
 
   if (event.status === 'PROCESSED' || event.status === 'SKIPPED' || event.status === 'FAILED') {
+    logger.warn('Event ingest skipped because it was already finalized', {
+      eventIngestId,
+      eventKey: event.eventKey,
+      status: event.status,
+      correlationId: event.correlationId,
+    });
     return;
   }
 
@@ -41,6 +47,12 @@ export async function processEventIngest(
   try {
     const rule = await getEnabledRuleForEvent(event.organizationId, event.eventKey);
     if (!rule) {
+      logger.warn('Event ingest skipped because no notification rule matched', {
+        eventIngestId,
+        eventKey: event.eventKey,
+        organizationId: event.organizationId,
+        correlationId: event.correlationId,
+      });
       await createNotificationExecution({
         organizationId: event.organizationId,
         correlationId: event.correlationId,
@@ -62,6 +74,14 @@ export async function processEventIngest(
       rule.templateVersionId,
     );
     if (!template) {
+      logger.error('Event ingest failed because the notification template was unavailable', {
+        eventIngestId,
+        eventKey: event.eventKey,
+        organizationId: event.organizationId,
+        notificationRuleId: rule.id,
+        templateId: rule.templateId,
+        templateVersionId: rule.templateVersionId,
+      });
       await createNotificationExecution({
         organizationId: event.organizationId,
         correlationId: event.correlationId,
@@ -82,6 +102,13 @@ export async function processEventIngest(
 
     const phone = await resolvePhoneForNotification(event.organizationId, rule.phoneNumberId);
     if (!phone) {
+      logger.error('Event ingest failed because the sending phone was unavailable', {
+        eventIngestId,
+        eventKey: event.eventKey,
+        organizationId: event.organizationId,
+        notificationRuleId: rule.id,
+        phoneNumberId: rule.phoneNumberId,
+      });
       await createNotificationExecution({
         organizationId: event.organizationId,
         correlationId: event.correlationId,
@@ -126,6 +153,15 @@ export async function processEventIngest(
     } catch (error) {
       const message =
         error instanceof ValidationError ? error.message : 'Variable mapping failed';
+      logger.error('Event ingest failed while building template components', {
+        eventIngestId,
+        eventKey: event.eventKey,
+        organizationId: event.organizationId,
+        notificationRuleId: rule.id,
+        templateVersionId: template.templateVersionId,
+        message,
+        validationDetails: error instanceof ValidationError ? error.details : undefined,
+      });
       await createNotificationExecution({
         organizationId: event.organizationId,
         correlationId: event.correlationId,
@@ -157,6 +193,14 @@ export async function processEventIngest(
       metaComponents,
       bodyText,
     });
+    logger.info('Outbound WhatsApp message staged', {
+      eventIngestId,
+      messageId,
+      eventKey: event.eventKey,
+      organizationId: event.organizationId,
+      template: template.metaTemplateName,
+      templateVersionId: template.templateVersionId,
+    });
 
     await createNotificationExecution({
       organizationId: event.organizationId,
@@ -170,7 +214,17 @@ export async function processEventIngest(
       status: 'QUEUED',
     });
 
-    await enqueueStagedMessageSend(messageId, event.correlationId);
+    try {
+      await enqueueStagedMessageSend(messageId, event.correlationId);
+    } catch (error) {
+      logger.error('Outbound WhatsApp message could not be queued', {
+        eventIngestId,
+        messageId,
+        correlationId: event.correlationId,
+        message: error instanceof Error ? error.message : 'Message queue failed',
+      });
+      throw error;
+    }
 
     await upsertConversationForOutbound({
       organizationId: event.organizationId,

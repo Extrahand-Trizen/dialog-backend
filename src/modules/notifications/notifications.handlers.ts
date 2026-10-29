@@ -3,6 +3,7 @@ import { AppResponse } from '../../shared/responses/AppResponse';
 import { getValidated } from '../../middleware/validate';
 import type { IngestEventInput } from './notifications.schemas';
 import { ingestOrganizationEvent } from './notifications.service';
+import logger from '../../infrastructure/logging/logger';
 
 function requireApiKeyContext(req: Request): {
   apiKeyId: string;
@@ -34,6 +35,14 @@ export async function ingestEventHandler(req: Request, res: Response): Promise<v
 
   const statusCode = result.duplicate ? 200 : 202;
   const message = result.duplicate ? 'Event already ingested' : 'Event accepted for processing';
+  logger.info('Notification event ingest accepted', {
+    eventIngestId: result.eventIngest.id,
+    eventKey: body.eventKey,
+    organizationId,
+    correlationId,
+    duplicate: result.duplicate,
+    statusCode,
+  });
 
   AppResponse.success(res, message, result, undefined, statusCode);
 }
