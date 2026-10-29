@@ -28,6 +28,21 @@ export function startNotificationTriggerWorker(): void {
       message: error.message,
     });
   });
+  notificationTriggerWorker.on('active', (job) => {
+    logger.info('Notification trigger job started', {
+      jobId: job.id,
+      eventIngestId: job.data.eventIngestId,
+    });
+  });
+  notificationTriggerWorker.on('completed', (job) => {
+    logger.info('Notification trigger job completed', {
+      jobId: job.id,
+      eventIngestId: job.data.eventIngestId,
+    });
+  });
+  notificationTriggerWorker.on('error', (error) => {
+    logger.error('Notification trigger worker error', { message: error.message });
+  });
 
   logger.info('Notification trigger worker started');
 }

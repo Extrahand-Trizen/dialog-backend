@@ -185,6 +185,13 @@ export async function enqueueStagedMessageSend(
 
 export async function sendOutboundMessage(messageId: string): Promise<void> {
   const context = await requireMessageSendContext(messageId);
+  logger.info('Outbound WhatsApp send started', {
+    messageId,
+    organizationId: context.organizationId,
+    type: context.type,
+    template: context.metaTemplateName,
+    metaPhoneNumberId: context.metaPhoneNumberId,
+  });
 
   try {
     assertMessagePhoneSameOrganization({
@@ -340,6 +347,11 @@ export async function sendOutboundMessage(messageId: string): Promise<void> {
     }
 
     const sent = await markMessageSent({ messageId, metaMessageId });
+    logger.info('Outbound WhatsApp send accepted by Meta', {
+      messageId,
+      metaMessageId,
+      template: context.metaTemplateName,
+    });
     void scheduleOutboundWebhook({
       organizationId: sent.organizationId,
       messageId,
@@ -353,6 +365,12 @@ export async function sendOutboundMessage(messageId: string): Promise<void> {
     const message = error instanceof Error ? error.message : 'Meta send failed';
     const errorCode =
       error instanceof ExternalServiceError ? error.errorCode : 'META_SEND_FAILED';
+    logger.error('Outbound WhatsApp send failed', {
+      messageId,
+      errorCode,
+      message,
+      template: context.metaTemplateName,
+    });
 
     const failed = await markMessageFailed({
       messageId,

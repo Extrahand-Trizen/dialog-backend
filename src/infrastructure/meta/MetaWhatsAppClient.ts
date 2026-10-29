@@ -1,5 +1,6 @@
 import { validateEnv } from '../../config/env';
 import { MetaApiError } from '../../shared/errors/sendErrors';
+import logger from '../logging/logger';
 import type {
   MetaCreateMessageTemplateRequest,
   MetaCreateMessageTemplateResponse,
@@ -38,6 +39,7 @@ export class MetaWhatsAppClient {
     init?: RequestInit,
   ): Promise<T> {
     const url = path.startsWith('http') ? path : `${this.baseUrl}${path}`;
+    const method = init?.method ?? 'GET';
     const response = await fetch(url, {
       ...init,
       headers: {
@@ -49,6 +51,12 @@ export class MetaWhatsAppClient {
 
     const text = await response.text();
     const body = (text ? (JSON.parse(text) as T & MetaGraphErrorBody) : ({} as T & MetaGraphErrorBody));
+    logger.info('Meta WhatsApp API response', {
+      method,
+      path,
+      status: response.status,
+      ok: response.ok,
+    });
 
     if (!response.ok) {
       const graphError = body.error;
@@ -58,6 +66,15 @@ export class MetaWhatsAppClient {
         : (graphError?.message ?? `Meta Graph API request failed (${response.status})`);
       const errorCode =
         response.status === 429 ? 'META_RATE_LIMITED' : 'META_GRAPH_API_ERROR';
+      logger.error('Meta WhatsApp API request failed', {
+        method,
+        path,
+        status: response.status,
+        errorCode,
+        metaCode: graphError?.code,
+        metaSubcode: graphError?.error_subcode,
+        fbtraceId: graphError?.fbtrace_id,
+      });
       throw new MetaApiError(message, errorCode, response.status, {
         metaCode: graphError?.code,
         metaSubcode: graphError?.error_subcode,

@@ -28,6 +28,22 @@ export function startMessageSendWorker(): void {
       message: error.message,
     });
   });
+  messageSendWorker.on('active', (job) => {
+    logger.info('Message send job started', {
+      jobId: job.id,
+      messageId: job.data.messageId,
+      correlationId: job.data.correlationId,
+    });
+  });
+  messageSendWorker.on('completed', (job) => {
+    logger.info('Message send job completed', {
+      jobId: job.id,
+      messageId: job.data.messageId,
+    });
+  });
+  messageSendWorker.on('error', (error) => {
+    logger.error('Message send worker error', { message: error.message });
+  });
 
   logger.info('Message send worker started');
 }

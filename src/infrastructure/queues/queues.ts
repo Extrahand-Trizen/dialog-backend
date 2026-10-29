@@ -7,6 +7,7 @@ import type { TemplateSyncJobData } from '../../modules/templates/templates.sche
 import { getQueueWorkerOptions, isQueueInfrastructureConfigured } from './connection';
 import { buildJobId } from './jobId';
 import { DEFAULT_JOB_OPTIONS, MESSAGE_SEND_JOB_OPTIONS, QUEUE_NAMES } from './registry';
+import logger from '../logging/logger';
 
 export type WebhookIngestJobData = {
   webhookEventId: string;
@@ -103,6 +104,10 @@ export async function enqueueNotificationTrigger(
     ...DEFAULT_JOB_OPTIONS,
     jobId: data.eventIngestId,
   });
+  logger.info('Notification trigger job queued', {
+    eventIngestId: data.eventIngestId,
+    executionSource: data.executionSource,
+  });
 }
 
 export function getMessageSendQueue(): Queue<MessageSendJobData> | null {
@@ -128,6 +133,10 @@ export async function enqueueMessageSend(data: MessageSendJobData): Promise<void
   await queue.add('message-send', data, {
     ...MESSAGE_SEND_JOB_OPTIONS,
     jobId: data.messageId,
+  });
+  logger.info('Message send job queued', {
+    messageId: data.messageId,
+    correlationId: data.correlationId,
   });
 }
 
